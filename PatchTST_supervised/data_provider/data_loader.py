@@ -218,8 +218,8 @@ class Dataset_Custom(Dataset):
         self.set_type = type_map[flag]
 
         self.features = features
-        if is_cluster:
-            self.is_cluster = is_cluster
+        self.is_cluster = is_cluster
+        if self.is_cluster:
             self.n_clusters = n_clusters
             self.cluster_random_state = cluster_random_state
         self.target = target

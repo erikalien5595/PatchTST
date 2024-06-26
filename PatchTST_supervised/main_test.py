@@ -1,6 +1,7 @@
 # main.py
 from data_provider.data_loader import Dataset_Custom
 from data_provider.data_factory import data_provider
+from models import Mamba
 import argparse
 import torch
 
@@ -71,6 +72,11 @@ if __name__ == "__main__":
     parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder')
     parser.add_argument('--do_predict', action='store_true', help='whether to predict unseen future data')
 
+    # Mamba
+    parser.add_argument('--d_state', type=int, default=256, help='d_state parameter of Mamba')
+    parser.add_argument('--dconv', type=int, default=2, help='d_conv parameter of Mamba')
+    parser.add_argument('--e_fact', type=int, default=1, help='expand factor parameter of Mamba')
+
     # optimization
     parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
     parser.add_argument('--itr', type=int, default=2, help='experiments times')
@@ -97,15 +103,27 @@ if __name__ == "__main__":
                               '--model', 'PatchTST', '--data', 'custom',
                               '--root_path', './dataset/', '--data_path', 'electricity.csv',
                               '--is_cluster', '1',
-                              '--seq_len', '336', '--label_len', '168', '--pred_len', '96'
+                              '--seq_len', '336', '--label_len', '168', '--pred_len', '720',
+                              '--enc_in', '321',
                               ])
 
     # data_set = Dataset_Custom(root_path='./', data_path='dataset/electricity/electricity.csv', flag='test',
     #                             features='M', is_cluster=True, size=[336, 48, 96], timeenc=0)
-    train_data, train_loader = data_provider(args, flag='train')
-    print('abc', train_data.label_dict)
-    for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
-        if i==1:
-            print(batch_x.shape, batch_y.shape, batch_x_mark.shape)
-            indices = torch.tensor(train_data.label_dict[2])
-            print(batch_x[:, :, indices].shape)
+
+    # ############# 测试聚类后把DataLoader加载出的数据进行切分 ############
+    # train_data, train_loader = data_provider(args, flag='train')
+    # print('abc', train_data.label_dict)
+    # for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
+    #     if i==1:
+    #         print(batch_x.shape, batch_y.shape, batch_x_mark.shape)
+    #         indices = torch.tensor(train_data.label_dict[2])
+    #         print(batch_x[:, :, indices].shape)
+    # #################################################################
+    ########################### 测试Mamba ###########################
+    print('mamba' in ['mamba', '1234', 'cd'])
+    mamba = Mamba.Model(args).float().to('cuda')
+    batch_size, seq_len, pred_len, enc_in = args.batch_size, args.seq_len, args.pred_len, args.enc_in
+    x = torch.randn(batch_size, seq_len, enc_in).to("cuda")
+    print(x.shape)
+    print(mamba(x).permute(0, 2, 1).shape)
+    #################################################################

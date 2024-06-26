@@ -50,7 +50,7 @@ if __name__ == '__main__':
     parser.add_argument('--kernel_size', type=int, default=25, help='decomposition-kernel')
     parser.add_argument('--individual', type=int, default=0, help='individual head; True 1 False 0')
 
-    # Formers 
+    # Formers
     parser.add_argument('--embed_type', type=int, default=0, help='0: default 1: value embedding + temporal embedding + positional embedding 2: value embedding + temporal embedding 3: value embedding + positional embedding 4: value embedding')
     parser.add_argument('--enc_in', type=int, default=7, help='encoder input size') # DLinear with --individual, use this hyperparameter as the number of channels
     parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
@@ -71,6 +71,11 @@ if __name__ == '__main__':
     parser.add_argument('--activation', type=str, default='gelu', help='activation')
     parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder')
     parser.add_argument('--do_predict', action='store_true', help='whether to predict unseen future data')
+
+    # Mamba
+    parser.add_argument('--d_state', type=int, default=256, help='d_state parameter of Mamba')
+    parser.add_argument('--dconv', type=int, default=2, help='d_conv parameter of Mamba')
+    parser.add_argument('--e_fact', type=int, default=1, help='expand factor parameter of Mamba')
 
     # optimization
     parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
