@@ -25,6 +25,7 @@ do
       --model $model_name \
       --data $data_name \
       --features M \
+      --is_cluster 1 \
       --seq_len $seq_len \
       --pred_len $pred_len \
       --enc_in 321 \
