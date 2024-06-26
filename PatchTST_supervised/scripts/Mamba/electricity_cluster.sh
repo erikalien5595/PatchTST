@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-gpu=1
+gpu=2
 
 if [ ! -d "./logs" ]; then
     mkdir ./logs
@@ -13,7 +13,7 @@ model_name=Mamba
 
 root_path_name=./dataset/
 data_path_name=electricity.csv
-model_id_name=Electricity
+model_id_name=Electricity_cluster
 data_name=custom
 
 random_seed=2021
@@ -28,7 +28,7 @@ do
       --model $model_name \
       --data $data_name \
       --features M \
-      --is_cluster 0 \
+      --is_cluster 1 \
       --revin 0 \
       --seq_len $seq_len \
       --pred_len $pred_len \

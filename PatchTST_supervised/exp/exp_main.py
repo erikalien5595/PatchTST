@@ -22,6 +22,16 @@ warnings.filterwarnings('ignore')
 class Exp_Main(Exp_Basic):
     def __init__(self, args):
         super(Exp_Main, self).__init__(args)
+        if args.is_cluster:
+            self.model_list = self._build_model_list()
+
+    def _build_model_list(self):
+        model_list = []
+        train_data, train_loader = self._get_data(flag='train')
+        for i in train_data.label_dict:
+            model = Mamba.Model(self.args).float().to(self.device)
+            model_list.append(model)
+        return model_list
 
     def _build_model(self):
         model_dict = {
@@ -35,6 +45,7 @@ class Exp_Main(Exp_Basic):
             'Mamba': Mamba,
         }
         model = model_dict[self.args.model].Model(self.args).float()
+
 
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
@@ -57,43 +68,55 @@ class Exp_Main(Exp_Basic):
         self.model.eval()
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
-                batch_x = batch_x.float().to(self.device)
-                batch_y = batch_y.float()
+                if self.args.is_cluster:
+                    loss = 0
+                    for model_index in vali_data.label_dict:
+                        indices = torch.tensor(vali_data.label_dict[model_index])
+                        batch_x_cluster = batch_x[:, :, indices].float().to(self.device)
+                        batch_y_cluster = batch_y[:, :, indices].float().to(self.device)
+                        outputs = self.model_list[model_index](batch_x_cluster)
+                        outputs = outputs[:, -self.args.pred_len:, :]
+                        batch_y_cluster = batch_y_cluster[:, -self.args.pred_len:, :].to(self.device)
+                        loss += criterion(outputs, batch_y_cluster)
+                    total_loss.append(loss.detach().cpu())
+                else:
+                    batch_x = batch_x.float().to(self.device)
+                    batch_y = batch_y.float()
 
-                batch_x_mark = batch_x_mark.float().to(self.device)
-                batch_y_mark = batch_y_mark.float().to(self.device)
+                    batch_x_mark = batch_x_mark.float().to(self.device)
+                    batch_y_mark = batch_y_mark.float().to(self.device)
 
-                # decoder input
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                # encoder - decoder
-                if self.args.use_amp:
-                    with torch.cuda.amp.autocast():
-                        if 'Linear' in self.args.model or 'TST' in self.args.model:
+                    # decoder input
+                    dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
+                    dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                    # encoder - decoder
+                    if self.args.use_amp:
+                        with torch.cuda.amp.autocast():
+                            if 'Linear' in self.args.model or 'TST' in self.args.model:
+                                outputs = self.model(batch_x)
+                            else:
+                                if self.args.output_attention:
+                                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                                else:
+                                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    else:
+                        if self.args.model in ['Linear', 'TST', 'Mamba']:
                             outputs = self.model(batch_x)
                         else:
                             if self.args.output_attention:
                                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
                             else:
                                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                else:
-                    if self.args.model in ['Linear', 'TST', 'Mamba']:
-                        outputs = self.model(batch_x)
-                    else:
-                        if self.args.output_attention:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                        else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                f_dim = -1 if self.args.features == 'MS' else 0
-                outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                    f_dim = -1 if self.args.features == 'MS' else 0
+                    outputs = outputs[:, -self.args.pred_len:, f_dim:]
+                    batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
 
-                pred = outputs.detach().cpu()
-                true = batch_y.detach().cpu()
+                    pred = outputs.detach().cpu()
+                    true = batch_y.detach().cpu()
 
-                loss = criterion(pred, true)
+                    loss = criterion(pred, true)
 
-                total_loss.append(loss)
+                    total_loss.append(loss)
         total_loss = np.average(total_loss)
         self.model.train()
         return total_loss
@@ -112,7 +135,14 @@ class Exp_Main(Exp_Basic):
         train_steps = len(train_loader)
         early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
 
-        model_optim = self._select_optimizer()
+        if self.args.is_cluster:
+            parameter_list = []
+            for model_index in train_data.label_dict:
+                parameter_list += list(self.model_list[model_index].parameters())
+            model_optim = optim.Adam(parameter_list, lr=self.args.learning_rate)
+        else:
+            model_optim = self._select_optimizer()
+
         criterion = self._select_criterion()
 
         if self.args.use_amp:
@@ -134,7 +164,38 @@ class Exp_Main(Exp_Basic):
                 iter_count += 1
                 model_optim.zero_grad()
                 if self.args.is_cluster:
-                    pass
+                    loss = 0
+                    for model_index in train_data.label_dict:
+                        indices = torch.tensor(train_data.label_dict[model_index])
+                        batch_x_cluster = batch_x[:, :, indices].float().to(self.device)
+                        batch_y_cluster = batch_y[:, :, indices].float().to(self.device)
+                        outputs = self.model_list[model_index](batch_x_cluster)
+                        outputs = outputs[:, -self.args.pred_len:, :]
+                        batch_y_cluster = batch_y_cluster[:, -self.args.pred_len:, :].to(self.device)
+                        loss += criterion(outputs, batch_y_cluster)
+                    train_loss.append(loss.item())
+
+                    if (i + 1) % 100 == 0:
+                        print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
+                        speed = (time.time() - time_now) / iter_count
+                        left_time = speed * ((self.args.train_epochs - epoch) * train_steps - i)
+                        print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
+                        iter_count = 0
+                        time_now = time.time()
+
+                    if self.args.use_amp:
+                        scaler.scale(loss).backward()
+                        scaler.step(model_optim)
+                        scaler.update()
+                    else:
+                        loss.backward()
+                        model_optim.step()
+
+                    if self.args.lradj == 'TST':
+                        adjust_learning_rate(model_optim, scheduler, epoch + 1, self.args, printout=False)
+                        scheduler.step()
+
+
                 else:
                     batch_x = batch_x.float().to(self.device)
 
