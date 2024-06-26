@@ -92,6 +92,9 @@ if __name__ == '__main__':
     parser.add_argument('--devices', type=str, default='0,1,2,3', help='device ids of multile gpus')
     parser.add_argument('--test_flop', action='store_true', default=False, help='See utils/tools for usage')
 
+    # cluster
+    parser.add_argument('--is_cluster', type=int, default=0, help='1: cluster for channels, 0: not cluster')
+
     args = parser.parse_args()
 
     # random seed
