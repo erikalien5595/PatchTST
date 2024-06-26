@@ -8,7 +8,7 @@ fi
 if [ ! -d "./logs/LongForecasting" ]; then
     mkdir ./logs/LongForecasting
 fi
-seq_len=336
+seq_len=96
 model_name=Mamba
 
 root_path_name=./dataset/
@@ -34,7 +34,7 @@ do
       --enc_in 321 \
       --e_layers 3 \
       --n_heads 16 \
-      --d_model 128 \
+      --d_model 512 \
       --d_ff 256 \
       --dropout 0.2\
       --fc_dropout 0.2 \
@@ -44,7 +44,7 @@ do
       --des 'Exp' \
       --train_epochs 100\
       --patience 10\
-      --lradj 'TST'\
+      --lradj '5'\
       --pct_start 0.2\
       --gpu ${gpu} \
       --itr 1 --batch_size 32 --learning_rate 0.0001 >logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log 
