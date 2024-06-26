@@ -37,6 +37,7 @@ def data_provider(args, flag):
         flag=flag,
         size=[args.seq_len, args.label_len, args.pred_len],
         features=args.features,
+        is_cluster=args.is_cluster,
         target=args.target,
         timeenc=timeenc,
         freq=freq
