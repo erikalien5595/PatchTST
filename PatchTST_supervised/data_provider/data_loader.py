@@ -5,8 +5,17 @@ import os
 import torch
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler
+# # 获取当前文件所在目录的父目录的父目录
+# parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#
+# print(f'path={parent_dir}')
+# import sys
+#
+# # 将 'supervised' 目录添加到 sys.path
+# sys.path.append(parent_dir)
 from utils.timefeatures import time_features
 import warnings
+from sklearn.cluster import KMeans
 
 warnings.filterwarnings('ignore')
 
@@ -190,7 +199,7 @@ class Dataset_ETT_minute(Dataset):
 
 
 class Dataset_Custom(Dataset):
-    def __init__(self, root_path, flag='train', size=None,
+    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=42, is_cluster=0,
                  features='S', data_path='ETTh1.csv',
                  target='OT', scale=True, timeenc=0, freq='h'):
         # size [seq_len, label_len, pred_len]
@@ -209,6 +218,10 @@ class Dataset_Custom(Dataset):
         self.set_type = type_map[flag]
 
         self.features = features
+        if is_cluster:
+            self.is_cluster = is_cluster
+            self.n_clusters = n_clusters
+            self.cluster_random_state = cluster_random_state
         self.target = target
         self.scale = scale
         self.timeenc = timeenc
@@ -253,6 +266,26 @@ class Dataset_Custom(Dataset):
             data = self.scaler.transform(df_data.values)
         else:
             data = df_data.values
+
+        if self.is_cluster:
+            # 对数据进行聚类
+            kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
+            kmeans.fit(data[border1s[0]:border2s[0]].T)
+            # 获取聚类中心
+            cluster_centroids = kmeans.cluster_centers_
+            # 获取每个样本的聚类标签
+            labels = kmeans.labels_
+            # 计算每个类别的数量
+            label_counts = np.bincount(np.int64(labels))
+            # 打印每个类别的数量
+            for label, count in enumerate(label_counts):
+                print(f'Category {label}: {count} sequences')
+            # 建立一个字典，用于保存聚类以后每一类的变量index
+            self.label_dict = {}
+            for label in np.unique(labels):
+                if 'label' not in self.label_dict:
+                    self.label_dict[label] = list(np.where(labels == label)[0])
+                # print(df_raw.iloc[:, np.where(labels == label)[0]])
 
         df_stamp = df_raw[['date']][border1:border2]
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
@@ -394,3 +427,7 @@ class Dataset_Pred(Dataset):
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
+
+if __name__=='__main__':
+    data_set = Dataset_Custom(root_path='../', data_path='dataset/electricity/electricity.csv', flag='train',
+                                features='M', is_cluster=True, size=[96, 48, 24], timeenc=0)
