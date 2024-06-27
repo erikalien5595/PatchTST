@@ -13,7 +13,7 @@ model_name=Mamba
 
 root_path_name=./dataset/
 data_path_name=electricity.csv
-model_id_name=Electricity
+model_id_name=Electricity_cluster
 data_name=custom
 
 random_seed=2021
@@ -35,7 +35,7 @@ do
       --enc_in 321 \
       --e_layers 3 \
       --n_heads 16 \
-      --d_model 128 \
+      --d_model 512 \
       --d_ff 256 \
       --dropout 0.2\
       --fc_dropout 0.2 \
