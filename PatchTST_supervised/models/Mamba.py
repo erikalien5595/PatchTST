@@ -12,7 +12,10 @@ class Model(nn.Module):
         super(Model, self).__init__()
         self.configs=configs
         if self.configs.revin==1:
-            self.revin_layer = RevIN(self.configs.enc_in)
+            if configs.is_cluster:
+                self.revin_layer = RevIN(self.configs.enc_in_cluster)  # 聚类后的cluster内的channel数
+            else:
+                self.revin_layer = RevIN(self.configs.enc_in)  # 原始的channel数
 
         self.lin1=torch.nn.Linear(self.configs.seq_len, self.configs.d_model)
         self.dropout1=torch.nn.Dropout(self.configs.dropout)
@@ -26,7 +29,7 @@ class Model(nn.Module):
         else:
             means = x.mean(1, keepdim=True).detach()
             x = x - means
-            stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5)
+            stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5).detach()
             x /= stdev
 
         x = torch.permute(x, (0, 2, 1))

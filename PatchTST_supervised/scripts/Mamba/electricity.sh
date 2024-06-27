@@ -29,7 +29,7 @@ do
       --data $data_name \
       --features M \
       --is_cluster 0 \
-      --revin 0 \
+      --revin 1 \
       --seq_len $seq_len \
       --pred_len $pred_len \
       --enc_in 321 \
@@ -43,10 +43,10 @@ do
       --patch_len 16 \
       --stride 8 \
       --des 'Exp' \
-      --train_epochs 100\
+      --train_epochs 100 \
       --patience 10\
       --lradj '5'\
       --pct_start 0.2\
       --gpu ${gpu} \
-      --itr 1 --batch_size 32 --learning_rate 0.0001 >logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log 
+      --itr 1 --batch_size 128 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
 done

@@ -48,11 +48,15 @@ class EarlyStopping:
         self.val_loss_min = np.Inf
         self.delta = delta
 
-    def __call__(self, val_loss, model, path):
+    def __call__(self, val_loss, model, path, is_cluster=0):
         score = -val_loss
         if self.best_score is None:
             self.best_score = score
-            self.save_checkpoint(val_loss, model, path)
+            if is_cluster:
+                for model_index in range(len(model)):  # 此时的model是一个list，里面有K个model，K为cluster个数
+                    self.save_checkpoint(val_loss, model, path, is_cluster, model_index)
+            else:
+                self.save_checkpoint(val_loss, model, path)
         elif score < self.best_score + self.delta:
             self.counter += 1
             print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
@@ -60,13 +64,24 @@ class EarlyStopping:
                 self.early_stop = True
         else:
             self.best_score = score
-            self.save_checkpoint(val_loss, model, path)
+            if is_cluster:
+                for model_index in range(len(model)):
+                    self.save_checkpoint(val_loss, model, path, is_cluster, model_index)
+            else:
+                self.save_checkpoint(val_loss, model, path)
             self.counter = 0
 
-    def save_checkpoint(self, val_loss, model, path):
-        if self.verbose:
-            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
-        torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
+    def save_checkpoint(self, val_loss, model, path, is_cluster=0, model_index=0):
+        if is_cluster:
+            if self.verbose and model_index==0:
+                print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  '
+                      f'Saving model for cluster model...')
+            torch.save(model[model_index].state_dict(), path + '/' + f'checkpoint_cluster_{model_index}.pth')
+        else:
+            if self.verbose:
+                print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  '
+                      f'Saving model ...')
+            torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
         self.val_loss_min = val_loss
 
 

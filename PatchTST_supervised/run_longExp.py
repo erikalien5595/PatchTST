@@ -6,6 +6,7 @@ import random
 import numpy as np
 
 if __name__ == '__main__':
+    print('进入run_longExp.py时的卡数：', torch.cuda.device_count())
     parser = argparse.ArgumentParser(description='Autoformer & Transformer family for Time Series Forecasting')
 
     # random seed
@@ -145,6 +146,7 @@ if __name__ == '__main__':
 
             exp = Exp(args)  # set experiments
             print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
+            print('开始训练时的卡数：', torch.cuda.device_count())
             exp.train(setting)
 
             print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))

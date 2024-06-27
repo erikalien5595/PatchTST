@@ -7,7 +7,8 @@ class Exp_Basic(object):
     def __init__(self, args):
         self.args = args
         self.device = self._acquire_device()
-        self.model = self._build_model().to(self.device)
+        if args.is_cluster != 1:  # 不聚类，则只有一个模型，聚类需要初始化K个模型，K为cluster个数，在Exp_Main中实现
+            self.model = self._build_model().to(self.device)
 
     def _build_model(self):
         raise NotImplementedError

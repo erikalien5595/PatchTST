@@ -226,6 +226,7 @@ class Dataset_Custom(Dataset):
         self.scale = scale
         self.timeenc = timeenc
         self.freq = freq
+        self.flag = flag
 
         self.root_path = root_path
         self.data_path = data_path
@@ -278,8 +279,10 @@ class Dataset_Custom(Dataset):
             # 计算每个类别的数量
             label_counts = np.bincount(np.int64(labels))
             # 打印每个类别的数量
-            for label, count in enumerate(label_counts):
-                print(f'Category {label}: {count} sequences')
+            if self.flag=='train':
+                print(f'Clustering Result:')
+                for label, count in enumerate(label_counts):
+                    print(f'    Category {label}: {count} sequences')
             # 建立一个字典，用于保存聚类以后每一类的变量index
             self.label_dict = {}
             for label in np.unique(labels):

@@ -29,6 +29,7 @@ class Exp_Main(Exp_Basic):
         model_list = []
         train_data, train_loader = self._get_data(flag='train')
         for i in train_data.label_dict:
+            self.args.enc_in_cluster = len(train_data.label_dict[i])
             model = Mamba.Model(self.args).float().to(self.device)
             model_list.append(model)
         return model_list
@@ -65,19 +66,27 @@ class Exp_Main(Exp_Basic):
 
     def vali(self, vali_data, vali_loader, criterion):
         total_loss = []
-        self.model.eval()
+        if self.args.is_cluster:
+            for model_index in vali_data.label_dict:
+                self.model_list[model_index].eval()
+        else:
+            self.model.eval()
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
                 if self.args.is_cluster:
                     loss = 0
+                    model_num = 0
                     for model_index in vali_data.label_dict:
+                        model_num += 1
                         indices = torch.tensor(vali_data.label_dict[model_index])
                         batch_x_cluster = batch_x[:, :, indices].float().to(self.device)
                         batch_y_cluster = batch_y[:, :, indices].float().to(self.device)
                         outputs = self.model_list[model_index](batch_x_cluster)
                         outputs = outputs[:, -self.args.pred_len:, :]
                         batch_y_cluster = batch_y_cluster[:, -self.args.pred_len:, :].to(self.device)
-                        loss += criterion(outputs, batch_y_cluster)
+                        channel_num = len(vali_data.label_dict[model_index])
+                        loss += channel_num * criterion(outputs, batch_y_cluster)
+                    loss = loss / self.args.enc_in
                     total_loss.append(loss.detach().cpu())
                 else:
                     batch_x = batch_x.float().to(self.device)
@@ -118,7 +127,11 @@ class Exp_Main(Exp_Basic):
 
                     total_loss.append(loss)
         total_loss = np.average(total_loss)
-        self.model.train()
+        if self.args.is_cluster:
+            for model_index in vali_data.label_dict:
+                self.model_list[model_index].train()
+        else:
+            self.model.train()
         return total_loss
 
     def train(self, setting):
@@ -158,21 +171,29 @@ class Exp_Main(Exp_Basic):
             iter_count = 0
             train_loss = []
 
-            self.model.train()
+            if self.args.is_cluster:
+                for model_index in train_data.label_dict:
+                    self.model_list[model_index].train()
+            else:
+                self.model.train()
             epoch_time = time.time()
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
                 iter_count += 1
                 model_optim.zero_grad()
                 if self.args.is_cluster:
                     loss = 0
+                    model_num = 0
                     for model_index in train_data.label_dict:
+                        model_num += 1
                         indices = torch.tensor(train_data.label_dict[model_index])
                         batch_x_cluster = batch_x[:, :, indices].float().to(self.device)
                         batch_y_cluster = batch_y[:, :, indices].float().to(self.device)
                         outputs = self.model_list[model_index](batch_x_cluster)
                         outputs = outputs[:, -self.args.pred_len:, :]
                         batch_y_cluster = batch_y_cluster[:, -self.args.pred_len:, :].to(self.device)
-                        loss += criterion(outputs, batch_y_cluster)
+                        channel_num = len(vali_data.label_dict[model_index])
+                        loss += channel_num * criterion(outputs, batch_y_cluster)
+                    loss = loss / self.args.enc_in
                     train_loss.append(loss.item())
 
                     if (i + 1) % 100 == 0:
@@ -266,7 +287,10 @@ class Exp_Main(Exp_Basic):
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss, test_loss))
-            early_stopping(vali_loss, self.model, path)
+            if self.args.is_cluster:
+                early_stopping(vali_loss, self.model_list, path, self.args.is_cluster)
+            else:
+                early_stopping(vali_loss, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
@@ -276,17 +300,28 @@ class Exp_Main(Exp_Basic):
             else:
                 print('Updating learning rate to {}'.format(scheduler.get_last_lr()[0]))
 
-        best_model_path = path + '/' + 'checkpoint.pth'
-        self.model.load_state_dict(torch.load(best_model_path))
+        if self.args.is_cluster:
+            for model_index in train_data.label_dict:
+                best_model_path = path + '/' + f'checkpoint_cluster_{model_index}.pth'
+                self.model_list[model_index].load_state_dict(torch.load(best_model_path))
+        else:
+            best_model_path = path + '/' + 'checkpoint.pth'
+            self.model.load_state_dict(torch.load(best_model_path, map_location=f'cuda:{self.args.gpu}'))
 
-        return self.model
+        return
 
     def test(self, setting, test=0):
         test_data, test_loader = self._get_data(flag='test')
-        
+        path = os.path.join(self.args.checkpoints, setting)
         if test:
             print('loading model')
-            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+            if self.args.is_cluster:
+                for model_index in test_data.label_dict:
+                    best_model_path = path + '/' + f'checkpoint_cluster_{model_index}.pth'
+                    self.model_list[model_index].load_state_dict(torch.load(best_model_path))
+            else:
+                best_model_path = path + '/' + 'checkpoint.pth'
+                self.model.load_state_dict(torch.load(best_model_path))
 
         preds = []
         trues = []
@@ -295,47 +330,61 @@ class Exp_Main(Exp_Basic):
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        self.model.eval()
+        if self.args.is_cluster:
+            for model_index in test_data.label_dict:
+                self.model_list[model_index].eval()
+        else:
+            self.model.eval()
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
-                batch_x = batch_x.float().to(self.device)
-                batch_y = batch_y.float().to(self.device)
+                if self.args.is_cluster:
+                    model_num = 0
+                    pred = np.zeros([self.args.batch_size, self.args.pred_len, self.args.enc_in])
+                    true = np.zeros([self.args.batch_size, self.args.pred_len, self.args.enc_in])
+                    for model_index in test_data.label_dict:
+                        model_num += 1
+                        indices = torch.tensor(test_data.label_dict[model_index])
+                        batch_x_cluster = batch_x[:, :, indices].float().to(self.device)
+                        batch_y_cluster = batch_y[:, :, indices].float().to(self.device)
+                        outputs = self.model_list[model_index](batch_x_cluster)
+                        pred[:, :, indices] = outputs[:, -self.args.pred_len:, :].detach().cpu().numpy()
+                        true[:, :, indices] = batch_y_cluster[:, -self.args.pred_len:, :].detach().cpu().numpy()
+                else:
+                    batch_x = batch_x.float().to(self.device)
+                    batch_y = batch_y.float().to(self.device)
 
-                batch_x_mark = batch_x_mark.float().to(self.device)
-                batch_y_mark = batch_y_mark.float().to(self.device)
+                    batch_x_mark = batch_x_mark.float().to(self.device)
+                    batch_y_mark = batch_y_mark.float().to(self.device)
 
-                # decoder input
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                # encoder - decoder
-                if self.args.use_amp:
-                    with torch.cuda.amp.autocast():
-                        if 'Linear' in self.args.model or 'TST' in self.args.model:
+                    # decoder input
+                    dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
+                    dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                    # encoder - decoder
+                    if self.args.use_amp:
+                        with torch.cuda.amp.autocast():
+                            if 'Linear' in self.args.model or 'TST' in self.args.model:
+                                outputs = self.model(batch_x)
+                            else:
+                                if self.args.output_attention:
+                                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                                else:
+                                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    else:
+                        if self.args.model in ['Linear', 'TST', 'Mamba']:
                             outputs = self.model(batch_x)
                         else:
                             if self.args.output_attention:
                                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+
                             else:
                                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                else:
-                    if 'Linear' in self.args.model or 'TST' in self.args.model:
-                            outputs = self.model(batch_x)
-                    else:
-                        if self.args.output_attention:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
 
-                        else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
-                f_dim = -1 if self.args.features == 'MS' else 0
-                # print(outputs.shape,batch_y.shape)
-                outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-                outputs = outputs.detach().cpu().numpy()
-                batch_y = batch_y.detach().cpu().numpy()
-
-                pred = outputs  # outputs.detach().cpu().numpy()  # .squeeze()
-                true = batch_y  # batch_y.detach().cpu().numpy()  # .squeeze()
+                    f_dim = -1 if self.args.features == 'MS' else 0
+                    # print(outputs.shape,batch_y.shape)
+                    outputs = outputs[:, -self.args.pred_len:, f_dim:]
+                    batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                    pred = outputs.detach().cpu().numpy()
+                    true = batch_y.detach().cpu().numpy()
 
                 preds.append(pred)
                 trues.append(true)
@@ -387,7 +436,11 @@ class Exp_Main(Exp_Basic):
 
         preds = []
 
-        self.model.eval()
+        if self.args.is_cluster:
+            for model_index in pred_data.label_dict:
+                self.model_list[model_index].eval()
+        else:
+            self.model.eval()
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(pred_loader):
                 batch_x = batch_x.float().to(self.device)
