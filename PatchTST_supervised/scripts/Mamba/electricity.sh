@@ -13,7 +13,7 @@ model_name=Mamba
 
 root_path_name=./dataset/
 data_path_name=electricity.csv
-model_id_name=Electricity_cluster
+model_id_name=Electricity # 如果是聚类后的模型，model_id_name后面再加上_cluster
 data_name=custom
 
 random_seed=2021
@@ -35,7 +35,8 @@ do
       --enc_in 321 \
       --e_layers 3 \
       --n_heads 16 \
-      --d_model 512 \
+      --d_model 128 \
+      --d_state 16 \
       --d_ff 256 \
       --dropout 0.2\
       --fc_dropout 0.2 \
@@ -43,7 +44,7 @@ do
       --patch_len 16 \
       --stride 8 \
       --des 'Exp' \
-      --train_epochs 100 \
+      --train_epochs 10 \
       --patience 10\
       --lradj '5'\
       --pct_start 0.2\

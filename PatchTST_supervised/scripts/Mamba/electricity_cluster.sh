@@ -35,19 +35,19 @@ do
       --enc_in 321 \
       --e_layers 3 \
       --n_heads 16 \
-      --d_model 128 \
+      --d_model 512 \
+      --d_state 16 \
       --d_ff 256 \
       --dropout 0.2\
       --fc_dropout 0.2 \
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \
-      --des 'Exp' \
-      --train_epochs 100 \
+      --des 'clusterExp' \
+      --train_epochs 10 \
       --patience 10\
       --lradj '5'\
       --pct_start 0.2\
       --gpu ${gpu} \
-      --des clusterExp \
       --itr 1 --batch_size 128 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
 done
