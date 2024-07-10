@@ -5,6 +5,7 @@ import math
 import numpy as np
 from mamba_ssm import Mamba
 from utils.tools import RevIN
+from layers.Mamba_EncDec import Encoder, EncoderLayer
 
 
 class Model(nn.Module):
@@ -16,14 +17,24 @@ class Model(nn.Module):
                 self.revin_layer = RevIN(self.configs.enc_in_cluster)  # 聚类后的cluster内的channel数
             else:
                 self.revin_layer = RevIN(self.configs.enc_in)  # 原始的channel数
+        self.mamba1 = Mamba(d_model=configs.d_model, d_state=configs.d_state, d_conv=configs.dconv,
+                            expand=configs.e_fact)
+        self.mamba2 = Mamba(d_model=configs.d_model, d_state=configs.d_state, d_conv=configs.dconv,
+                            expand=configs.e_fact)
 
-        self.lin1=torch.nn.Linear(self.configs.seq_len, self.configs.d_model)
-        self.dropout1=torch.nn.Dropout(self.configs.dropout)
-        self.mamba = Mamba(d_model=self.configs.d_model,d_state=self.configs.d_state,d_conv=self.configs.dconv,expand=self.configs.e_fact)
-        self.linear_head=torch.nn.Linear(self.configs.d_model,self.configs.pred_len)
+        self.encoder = Encoder(
+            [
+                EncoderLayer(
+                        self.mamba1, self.mamba2, dropout=configs.dropout, is_flip=configs.is_flip,
+                ) for l in range(configs.e_layers)
+            ]  # conv_layers=None, norm_layer=None
+        )
 
+        self.lin1 = torch.nn.Linear(self.configs.seq_len, self.configs.d_model)
+        self.linear_head = torch.nn.Linear(self.configs.d_model,self.configs.pred_len)
 
-    def forward(self, x):
+    def forward(self, x):  # the original dimension of `x` is (B, L, D)
+        # normalization
         if self.configs.revin == 1:
             x = self.revin_layer(x, 'norm')
         else:
@@ -32,13 +43,11 @@ class Model(nn.Module):
             stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5).detach()
             x /= stdev
 
-        x = torch.permute(x, (0, 2, 1))
-        x = self.lin1(x)
-        x_res1 = x
-        x = self.dropout1(x)
-        x = self.mamba(x)
-        x = self.linear_head(x+x_res1)
-        x = x.permute(0, 2, 1)
+        x = torch.permute(x, (0, 2, 1))  # channel mixing: (B, D, L)
+        x = self.lin1(x)  # Embedding: (B, D, E)
+        x = self.encoder(x)
+        x = self.linear_head(x)  # (B, D, T)
+        x = x.permute(0, 2, 1)  # (B, T, D)
 
         if self.configs.revin == 1:
             x = self.revin_layer(x, 'denorm')

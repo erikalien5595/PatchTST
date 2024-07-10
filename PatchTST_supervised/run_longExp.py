@@ -77,6 +77,8 @@ if __name__ == '__main__':
     parser.add_argument('--d_state', type=int, default=256, help='d_state parameter of Mamba')
     parser.add_argument('--dconv', type=int, default=2, help='d_conv parameter of Mamba')
     parser.add_argument('--e_fact', type=int, default=1, help='expand factor parameter of Mamba')
+    parser.add_argument('--is_flip', type=int, default=1,
+                        help='1: consider reversed Mamba for the variables, 0: not consider reversed Mamba')
 
     # optimization
     parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
@@ -100,6 +102,7 @@ if __name__ == '__main__':
 
     # cluster
     parser.add_argument('--is_cluster', type=int, default=0, help='1: cluster for channels, 0: not cluster')
+    parser.add_argument('--n_clusters', type=int, default=3, help='the number of clusters for the channels')
 
     args = parser.parse_args()
 

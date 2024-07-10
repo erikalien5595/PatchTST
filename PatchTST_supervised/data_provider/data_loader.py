@@ -286,7 +286,7 @@ class Dataset_Custom(Dataset):
             # 建立一个字典，用于保存聚类以后每一类的变量index
             self.label_dict = {}
             for label in np.unique(labels):
-                if 'label' not in self.label_dict:
+                if label not in self.label_dict:
                     self.label_dict[label] = list(np.where(labels == label)[0])
                 # print(df_raw.iloc[:, np.where(labels == label)[0]])
 
@@ -325,6 +325,101 @@ class Dataset_Custom(Dataset):
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
     
+
+class Dataset_PEMS(Dataset):
+    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=42, is_cluster=0,
+                 features='S', data_path='ETTh1.csv',
+                 target='OT', scale=True, timeenc=0, freq='h'):
+        # size [seq_len, label_len, pred_len]
+        # info
+        self.seq_len = size[0]
+        self.label_len = size[1]
+        self.pred_len = size[2]
+        # init
+        assert flag in ['train', 'test', 'val']
+        type_map = {'train': 0, 'val': 1, 'test': 2}
+        self.set_type = type_map[flag]
+
+        self.features = features
+        self.is_cluster = is_cluster
+        if self.is_cluster:
+            self.n_clusters = n_clusters
+            self.cluster_random_state = cluster_random_state
+        self.target = target
+        self.scale = scale
+        self.timeenc = timeenc
+        self.freq = freq
+        self.flag = flag
+
+        self.root_path = root_path
+        self.data_path = data_path
+        self.__read_data__()
+
+    def __read_data__(self):
+        self.scaler = StandardScaler()
+        data_file = os.path.join(self.root_path, self.data_path)
+        data = np.load(data_file, allow_pickle=True)
+        data = data['data'][:, :, 0]
+
+        train_ratio = 0.6
+        valid_ratio = 0.2
+        train_data = data[:int(train_ratio * len(data))]
+        valid_data = data[int(train_ratio * len(data)): int((train_ratio + valid_ratio) * len(data))]
+        test_data = data[int((train_ratio + valid_ratio) * len(data)):]
+        total_data = [train_data, valid_data, test_data]
+        data = total_data[self.set_type]
+
+        if self.scale:
+            self.scaler.fit(train_data)
+            data = self.scaler.transform(data)
+            train_data_std = self.scaler.transform(train_data)
+
+        if self.is_cluster:
+            # 对数据进行聚类
+            kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
+            kmeans.fit(train_data_std.T)
+            # 获取每个样本的聚类标签
+            labels = kmeans.labels_
+            # 计算每个类别的数量
+            label_counts = np.bincount(np.int64(labels))
+            # 打印每个类别的数量
+            if self.flag=='train':
+                print(f'Clustering Result:')
+                for label, count in enumerate(label_counts):
+                    print(f'    Category {label}: {count} sequences')
+            # 建立一个字典，用于保存聚类以后每一类的变量index
+            self.label_dict = {}
+            for label in np.unique(labels):
+                if label not in self.label_dict:
+                    self.label_dict[label] = list(np.where(labels == label)[0])
+                # print(data[:, np.where(labels == label)[0]])
+
+
+        df = pd.DataFrame(data)
+        df = df.fillna(method='ffill', limit=len(df)).fillna(method='bfill', limit=len(df)).values
+
+        self.data_x = df
+        self.data_y = df
+
+    def __getitem__(self, index):
+        s_begin = index
+        s_end = s_begin + self.seq_len
+        r_begin = s_end - self.label_len
+        r_end = r_begin + self.label_len + self.pred_len
+
+        seq_x = self.data_x[s_begin:s_end]
+        seq_y = self.data_y[r_begin:r_end]
+        seq_x_mark = torch.zeros((seq_x.shape[0], 1))
+        seq_y_mark = torch.zeros((seq_x.shape[0], 1))
+
+        return seq_x, seq_y, seq_x_mark, seq_y_mark
+
+    def __len__(self):
+        return len(self.data_x) - self.seq_len - self.pred_len + 1
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
+
 
 class Dataset_Pred(Dataset):
     def __init__(self, root_path, flag='pred', size=None,
@@ -432,5 +527,7 @@ class Dataset_Pred(Dataset):
         return self.scaler.inverse_transform(data)
 
 if __name__=='__main__':
-    data_set = Dataset_Custom(root_path='../', data_path='dataset/electricity/electricity.csv', flag='train',
-                                features='M', is_cluster=True, size=[96, 48, 24], timeenc=0)
+    # data_set = Dataset_Custom(root_path='../', data_path='dataset/traffic.csv', flag='train',
+    #                             features='M', is_cluster=True, size=[96, 48, 24], n_clusters=5, timeenc=0)
+    data_set = Dataset_PEMS(root_path='../dataset/PEMS/', data_path='PEMS03.npz', flag='train',
+                                features='M', is_cluster=True, size=[96, 48, 24], n_clusters=5, timeenc=0)

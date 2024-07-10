@@ -8,12 +8,12 @@ fi
 if [ ! -d "./logs/LongForecasting" ]; then
     mkdir ./logs/LongForecasting
 fi
-seq_len=96
+seq_len=336
 model_name=Mamba
 
 root_path_name=./dataset/
 data_path_name=electricity.csv
-model_id_name=Electricity_cluster
+model_id_name=Electricity # 如果是聚类后的模型，model_id_name后面再加上_cluster
 data_name=custom
 
 random_seed=2021
@@ -24,7 +24,7 @@ do
       --is_training 1 \
       --root_path $root_path_name \
       --data_path $data_path_name \
-      --model_id $model_id_name_$seq_len'_'$pred_len \
+      --model_id $model_id_name'_'$seq_len'_'$pred_len \
       --model $model_name \
       --data $data_name \
       --features M \
@@ -37,13 +37,14 @@ do
       --n_heads 16 \
       --d_model 512 \
       --d_state 16 \
+      --is_flip 1 \
       --d_ff 256 \
       --dropout 0.2\
       --fc_dropout 0.2 \
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \
-      --des 'clusterExp' \
+      --des 'ClusterFlip' \
       --train_epochs 10 \
       --patience 10\
       --lradj '5'\

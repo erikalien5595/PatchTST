@@ -20,9 +20,28 @@ if __name__=='__main__':
 
     # df_raw = pd.read_csv('./dataset/ETT-small/ETTm2.csv')
     # df_raw = pd.read_csv('./dataset/illness/national_illness.csv')
-    # df_raw = pd.read_csv('./dataset/weather/weather.csv')
-    df_raw = pd.read_csv('./dataset/electricity/electricity.csv')
+    df_raw = pd.read_csv('./dataset/weather/weather.csv')
+    # df_raw = pd.read_csv('./dataset/electricity/electricity.csv')
     # df_raw = pd.read_csv('./dataset/traffic/traffic.csv').iloc[:1000]
+
+    from sklearn.preprocessing import StandardScaler
+    import os
+    scaler = StandardScaler()
+    data_file = './dataset/PEMS/PEMS03.npz'
+    data = np.load(data_file, allow_pickle=True)
+    data = data['data'][:, :, 0]
+    print(data.shape)
+
+    train_ratio = 0.6
+    valid_ratio = 0.2
+    train_data = data[:int(train_ratio * len(data))]
+    valid_data = data[int(train_ratio * len(data)): int((train_ratio + valid_ratio) * len(data))]
+    test_data = data[int((train_ratio + valid_ratio) * len(data)):]
+    total_data = [train_data, valid_data, test_data]
+
+    scaler.fit(train_data)
+    train_data_std = scaler.transform(train_data)
+
     cols = list(df_raw.columns)
     cols.remove('OT')
     cols.remove('date')
@@ -46,12 +65,13 @@ if __name__=='__main__':
     # print(z.shape)
 
     print(df_raw_std.shape)
-    # 创建一个热力图
-    plt.figure(figsize=[16, 9])
-    sns.set(font_scale=1.5)
-    sns.heatmap(df_raw.corr(), annot=False, cmap='coolwarm')
-    plt.title('Heatmap of Origin Data weather')
-    plt.show()
+    # # 创建一个热力图
+    # plt.figure(figsize=[16, 9])
+    # sns.set(font_scale=1.5)
+    # # sns.heatmap(df_raw.corr(), annot=False, cmap='coolwarm')
+    # sns.heatmap(np.corrcoef(train_data_std.T), annot=False, cmap='coolwarm')
+    # plt.title('Heatmap of Origin Data PEMS08')
+    # plt.show()
 
     from kshape.core import KShapeClusteringCPU
     from kshape.core_gpu import KShapeClusteringGPU
@@ -77,7 +97,7 @@ if __name__=='__main__':
     # 初始化KMeans对象
     kmeans = KMeans(n_clusters=num_clusters, random_state=42)  # 假设我们要分成3个簇
     # 对数据进行聚类
-    kmeans.fit(df_raw_std.T)
+    kmeans.fit(train_data_std.T)
     # 获取聚类中心
     cluster_centroids = kmeans.cluster_centers_
     print(cluster_centroids.shape, cluster_centroids)
@@ -108,7 +128,8 @@ if __name__=='__main__':
     # 绘制原始序列和中心序列
     for i, center in enumerate(cluster_centroids):
         plt.figure(figsize=(12, 9))
-        cluster_data = df_raw_std[:, labels == i]
+        # cluster_data = df_raw_std[:, labels == i]
+        cluster_data = train_data_std[:, labels == i]
         plt.plot(cluster_data[-1000:], color=light_colors[i%3], alpha=0.5)
         plt.plot(center[-1000:], '--', color=colors[i%3], linewidth=2, label=f'Center {i + 1}')
         plt.xlabel('Sequence Index')
@@ -118,12 +139,13 @@ if __name__=='__main__':
 
     # 按聚类结果排序
     sorted_indices = np.argsort(labels)
-    sorted_data = df_raw_std[:, sorted_indices]
+    # sorted_data = df_raw_std[:, sorted_indices]
+    sorted_data = train_data_std[:, sorted_indices]
 
     # 使用seaborn绘制热力图
     plt.figure(figsize=(10, 8))
     sns.heatmap(np.corrcoef(sorted_data.T), cmap='coolwarm')
-    plt.title('Heatmap of Clustered Data for weather')
+    plt.title('Heatmap of Clustered Data for PEMS03')
     plt.xlabel('Sequence Index')
     plt.ylabel('Data Points')
     plt.show()
