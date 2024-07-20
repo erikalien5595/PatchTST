@@ -11,9 +11,9 @@ fi
 seq_len=96
 model_name=Mamba
 
-root_path_name=./dataset/
-data_path_name=traffic.csv
-model_id_name=Traffic # 如果是聚类后的模型，model_id_name后面再加上_cluster
+root_path_name=./dataset/exchange_rate/
+data_path_name=exchange_rate.csv
+model_id_name=Exchange # 如果是聚类后的模型，model_id_name后面再加上_cluster
 data_name=custom
 
 random_seed=2021
@@ -29,18 +29,19 @@ do
       --data $data_name \
       --features M \
       --is_cluster 0 \
-      --n_clusters 3 \
+      --n_clusters 4 \
       --revin 1 \
       --seq_len $seq_len \
       --pred_len $pred_len \
-      --enc_in 862 \
+      --enc_in 8 \
       --e_layers 2 \
       --n_heads 16 \
       --d_model 512 \
       --d_state 16 \
+      --is_flip 1 \
       --d_ff 256 \
-      --dropout 0.05\
-      --fc_dropout 0.2 \
+      --dropout 0.2\
+      --fc_dropout 0.3 \
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \

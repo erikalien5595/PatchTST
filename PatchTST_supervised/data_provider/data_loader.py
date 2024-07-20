@@ -21,7 +21,7 @@ warnings.filterwarnings('ignore')
 
 
 class Dataset_ETT_hour(Dataset):
-    def __init__(self, root_path, flag='train', size=None,
+    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=42, is_cluster=0,
                  features='S', data_path='ETTh1.csv',
                  target='OT', scale=True, timeenc=0, freq='h'):
         # size [seq_len, label_len, pred_len]
@@ -40,10 +40,15 @@ class Dataset_ETT_hour(Dataset):
         self.set_type = type_map[flag]
 
         self.features = features
+        self.is_cluster = is_cluster
+        if self.is_cluster:
+            self.n_clusters = n_clusters
+            self.cluster_random_state = cluster_random_state
         self.target = target
         self.scale = scale
         self.timeenc = timeenc
         self.freq = freq
+        self.flag = flag
 
         self.root_path = root_path
         self.data_path = data_path
@@ -71,6 +76,25 @@ class Dataset_ETT_hour(Dataset):
             data = self.scaler.transform(df_data.values)
         else:
             data = df_data.values
+
+        if self.is_cluster:
+            # 对数据进行聚类
+            kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
+            kmeans.fit(data.T)
+            # 获取每个样本的聚类标签
+            labels = kmeans.labels_
+            # 计算每个类别的数量
+            label_counts = np.bincount(np.int64(labels))
+            # 打印每个类别的数量
+            if self.flag=='train':
+                print(f'Clustering Result:')
+                for label, count in enumerate(label_counts):
+                    print(f'    Category {label}: {count} sequences')
+            # 建立一个字典，用于保存聚类以后每一类的变量index
+            self.label_dict = {}
+            for label in np.unique(labels):
+                if label not in self.label_dict:
+                    self.label_dict[label] = list(np.where(labels == label)[0])
 
         df_stamp = df_raw[['date']][border1:border2]
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
@@ -109,7 +133,7 @@ class Dataset_ETT_hour(Dataset):
 
 
 class Dataset_ETT_minute(Dataset):
-    def __init__(self, root_path, flag='train', size=None,
+    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=42, is_cluster=0,
                  features='S', data_path='ETTm1.csv',
                  target='OT', scale=True, timeenc=0, freq='t'):
         # size [seq_len, label_len, pred_len]
@@ -128,10 +152,15 @@ class Dataset_ETT_minute(Dataset):
         self.set_type = type_map[flag]
 
         self.features = features
+        self.is_cluster = is_cluster
+        if self.is_cluster:
+            self.n_clusters = n_clusters
+            self.cluster_random_state = cluster_random_state
         self.target = target
         self.scale = scale
         self.timeenc = timeenc
         self.freq = freq
+        self.flag = flag
 
         self.root_path = root_path
         self.data_path = data_path
@@ -173,6 +202,25 @@ class Dataset_ETT_minute(Dataset):
         elif self.timeenc == 1:
             data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
             data_stamp = data_stamp.transpose(1, 0)
+
+        if self.is_cluster:
+            # 对数据进行聚类
+            kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
+            kmeans.fit(data.T)
+            # 获取每个样本的聚类标签
+            labels = kmeans.labels_
+            # 计算每个类别的数量
+            label_counts = np.bincount(np.int64(labels))
+            # 打印每个类别的数量
+            if self.flag=='train':
+                print(f'Clustering Result:')
+                for label, count in enumerate(label_counts):
+                    print(f'    Category {label}: {count} sequences')
+            # 建立一个字典，用于保存聚类以后每一类的变量index
+            self.label_dict = {}
+            for label in np.unique(labels):
+                if label not in self.label_dict:
+                    self.label_dict[label] = list(np.where(labels == label)[0])
 
         self.data_x = data[border1:border2]
         self.data_y = data[border1:border2]
@@ -421,6 +469,107 @@ class Dataset_PEMS(Dataset):
         return self.scaler.inverse_transform(data)
 
 
+class Dataset_Solar(Dataset):
+    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=42, is_cluster=0,
+                 features='S', data_path='ETTh1.csv',
+                 target='OT', scale=True, timeenc=0, freq='h'):
+        # size [seq_len, label_len, pred_len]
+        # info
+        self.seq_len = size[0]
+        self.label_len = size[1]
+        self.pred_len = size[2]
+        # init
+        assert flag in ['train', 'test', 'val']
+        type_map = {'train': 0, 'val': 1, 'test': 2}
+        self.set_type = type_map[flag]
+
+        self.features = features
+        self.is_cluster = is_cluster
+        if self.is_cluster:
+            self.n_clusters = n_clusters
+            self.cluster_random_state = cluster_random_state
+        self.target = target
+        self.scale = scale
+        self.timeenc = timeenc
+        self.freq = freq
+        self.flag = flag
+
+        self.root_path = root_path
+        self.data_path = data_path
+        self.__read_data__()
+
+    def __read_data__(self):
+        self.scaler = StandardScaler()
+        df_raw = []
+        with open(os.path.join(self.root_path, self.data_path), "r", encoding='utf-8') as f:
+            for line in f.readlines():
+                line = line.strip('\n').split(',')
+                data_line = np.stack([float(i) for i in line])
+                df_raw.append(data_line)
+        df_raw = np.stack(df_raw, 0)
+        df_raw = pd.DataFrame(df_raw)
+        print(df_raw.shape)
+
+        num_train = int(len(df_raw) * 0.7)
+        num_test = int(len(df_raw) * 0.2)
+        num_vali = len(df_raw) - num_train - num_test
+        border1s = [0, num_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
+        border2s = [num_train, num_train + num_vali, len(df_raw)]
+        border1 = border1s[self.set_type]
+        border2 = border2s[self.set_type]
+
+        df_data = df_raw.values
+
+        if self.scale:
+            train_data = df_data[border1s[0]:border2s[0]]
+            self.scaler.fit(train_data)
+            data = self.scaler.transform(df_data)
+        else:
+            data = df_data
+
+        if self.is_cluster:
+            # 对数据进行聚类
+            kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
+            kmeans.fit(data.T)
+            # 获取每个样本的聚类标签
+            labels = kmeans.labels_
+            # 计算每个类别的数量
+            label_counts = np.bincount(np.int64(labels))
+            # 打印每个类别的数量
+            if self.flag=='train':
+                print(f'Clustering Result:')
+                for label, count in enumerate(label_counts):
+                    print(f'    Category {label}: {count} sequences')
+            # 建立一个字典，用于保存聚类以后每一类的变量index
+            self.label_dict = {}
+            for label in np.unique(labels):
+                if label not in self.label_dict:
+                    self.label_dict[label] = list(np.where(labels == label)[0])
+                print(data[:, np.where(labels == label)[0]])
+
+        self.data_x = data[border1:border2]
+        self.data_y = data[border1:border2]
+
+    def __getitem__(self, index):
+        s_begin = index
+        s_end = s_begin + self.seq_len
+        r_begin = s_end - self.label_len
+        r_end = r_begin + self.label_len + self.pred_len
+
+        seq_x = self.data_x[s_begin:s_end]
+        seq_y = self.data_y[r_begin:r_end]
+        seq_x_mark = torch.zeros((seq_x.shape[0], 1))
+        seq_y_mark = torch.zeros((seq_x.shape[0], 1))
+
+        return seq_x, seq_y, seq_x_mark, seq_y_mark
+
+    def __len__(self):
+        return len(self.data_x) - self.seq_len - self.pred_len + 1
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
+
+
 class Dataset_Pred(Dataset):
     def __init__(self, root_path, flag='pred', size=None,
                  features='S', data_path='ETTh1.csv',
@@ -529,5 +678,7 @@ class Dataset_Pred(Dataset):
 if __name__=='__main__':
     # data_set = Dataset_Custom(root_path='../', data_path='dataset/traffic.csv', flag='train',
     #                             features='M', is_cluster=True, size=[96, 48, 24], n_clusters=5, timeenc=0)
-    data_set = Dataset_PEMS(root_path='../dataset/PEMS/', data_path='PEMS03.npz', flag='train',
+    # data_set = Dataset_PEMS(root_path='../dataset/PEMS/', data_path='PEMS03.npz', flag='train',
+    #                             features='M', is_cluster=True, size=[96, 48, 24], n_clusters=5, timeenc=0)
+    data_set = Dataset_Solar(root_path='../dataset/', data_path='solar_AL.txt', flag='train',
                                 features='M', is_cluster=True, size=[96, 48, 24], n_clusters=5, timeenc=0)

@@ -347,8 +347,12 @@ class Exp_Main(Exp_Basic):
                         batch_x_cluster = batch_x[:, :, indices].float().to(self.device)
                         batch_y_cluster = batch_y[:, :, indices].float().to(self.device)
                         outputs = self.model_list[model_index](batch_x_cluster)
-                        pred[:, :, indices] = outputs[:, -self.args.pred_len:, :].detach().cpu().numpy()
-                        true[:, :, indices] = batch_y_cluster[:, -self.args.pred_len:, :].detach().cpu().numpy()
+                        if len(indices)==1:
+                            pred[:, :, indices] = outputs[:, -self.args.pred_len:, :].squeeze().detach().cpu().numpy()
+                            true[:, :, indices] = batch_y_cluster[:, -self.args.pred_len:, :].squeeze().detach().cpu().numpy()
+                        else:
+                            pred[:, :, indices] = outputs[:, -self.args.pred_len:, :].detach().cpu().numpy()
+                            true[:, :, indices] = batch_y_cluster[:, -self.args.pred_len:, :].detach().cpu().numpy()
                 else:
                     batch_x = batch_x.float().to(self.device)
                     batch_y = batch_y.float().to(self.device)
