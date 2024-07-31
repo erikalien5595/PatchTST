@@ -52,7 +52,11 @@ if __name__ == '__main__':
     parser.add_argument('--individual', type=int, default=0, help='individual head; True 1 False 0')
 
     # Formers
-    parser.add_argument('--embed_type', type=int, default=0, help='0: default 1: value embedding + temporal embedding + positional embedding 2: value embedding + temporal embedding 3: value embedding + positional embedding 4: value embedding')
+    parser.add_argument('--embed_type', type=int, default=0, help='0: default 1: value embedding + '
+                                                                  'temporal embedding + '
+                                                                  'positional embedding 2: value embedding + '
+                                                                  'temporal embedding 3: value embedding + '
+                                                                  'positional embedding 4: value embedding')
     parser.add_argument('--enc_in', type=int, default=7, help='encoder input size') # DLinear with --individual, use this hyperparameter as the number of channels
     parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
     parser.add_argument('--c_out', type=int, default=7, help='output size')
@@ -74,6 +78,7 @@ if __name__ == '__main__':
     parser.add_argument('--do_predict', action='store_true', help='whether to predict unseen future data')
 
     # Mamba
+    parser.add_argument('--ch_ind', type=int, default=0, help='Channel Independence; True 1 False 0')
     parser.add_argument('--d_state', type=int, default=256, help='d_state parameter of Mamba')
     parser.add_argument('--dconv', type=int, default=2, help='d_conv parameter of Mamba')
     parser.add_argument('--e_fact', type=int, default=1, help='expand factor parameter of Mamba')
@@ -103,6 +108,8 @@ if __name__ == '__main__':
     # cluster
     parser.add_argument('--is_cluster', type=int, default=0, help='1: cluster for channels, 0: not cluster')
     parser.add_argument('--n_clusters', type=int, default=3, help='the number of clusters for the channels')
+    parser.add_argument('--use_catch22', type=int, default=0, help='whether use catch22 to extract time '
+                                                                   'series features for clustering')
 
     args = parser.parse_args()
 
