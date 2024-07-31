@@ -35,6 +35,7 @@ def data_provider(args, flag):
     data_set = Data(
         root_path=args.root_path,
         data_path=args.data_path,
+        use_catch22=args.use_catch22,
         flag=flag,
         size=[args.seq_len, args.label_len, args.pred_len],
         n_clusters=args.n_clusters,
