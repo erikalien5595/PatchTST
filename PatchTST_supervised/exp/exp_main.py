@@ -30,6 +30,8 @@ class Exp_Main(Exp_Basic):
         train_data, train_loader = self._get_data(flag='train')
         for i in train_data.label_dict:
             self.args.enc_in_cluster = len(train_data.label_dict[i])
+            self.args.ch_ind = 0 if train_data.sra_dict[i]>0.7 else 1
+            print(f'model {i},  ch_ind={self.args.ch_ind}')
             model = Mamba.Model(self.args).float().to(self.device)
             model_list.append(model)
         return model_list
@@ -417,7 +419,7 @@ class Exp_Main(Exp_Basic):
 
         mae, mse, rmse, mape, mspe, rse, corr = metric(preds, trues)
         print('mse:{}, mae:{}, rse:{}'.format(mse, mae, rse))
-        f = open(f"result_gpu{self.args.gpu}.txt", 'a')
+        f = open(f"result_{self.args.data_path[:-4]}_iscluster_{self.args.is_cluster}.txt", 'a')
         f.write(setting + "  \n")
         f.write('mse:{}, mae:{}, rse:{}'.format(mse, mae, rse))
         f.write('\n')

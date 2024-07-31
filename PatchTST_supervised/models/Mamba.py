@@ -17,21 +17,35 @@ class Model(nn.Module):
                 self.revin_layer = RevIN(self.configs.enc_in_cluster)  # 聚类后的cluster内的channel数
             else:
                 self.revin_layer = RevIN(self.configs.enc_in)  # 原始的channel数
+        self.ch_ind = configs.ch_ind
+        print(f'self.ch_ind={self.ch_ind}')
+        is_flip = 0 if self.ch_ind==1 else 1
         self.mamba1 = Mamba(d_model=configs.d_model, d_state=configs.d_state, d_conv=configs.dconv,
                             expand=configs.e_fact)
         self.mamba2 = Mamba(d_model=configs.d_model, d_state=configs.d_state, d_conv=configs.dconv,
                             expand=configs.e_fact)
-
+        # if self.ch_ind == 1:
+        #     self.mamba1 = Mamba(d_model=1, d_state=configs.d_state, d_conv=configs.dconv,
+        #                     expand=configs.e_fact)
+        #     self.mamba2 = Mamba(d_model=1, d_state=configs.d_state, d_conv=configs.dconv,
+        #                     expand=configs.e_fact)
+        # else:
+        #     self.mamba1 = Mamba(d_model=configs.d_model, d_state=configs.d_state, d_conv=configs.dconv,
+        #                         expand=configs.e_fact)
+        #     self.mamba2 = Mamba(d_model=configs.d_model, d_state=configs.d_state, d_conv=configs.dconv,
+        #                         expand=configs.e_fact)
         self.encoder = Encoder(
             [
                 EncoderLayer(
-                        self.mamba1, self.mamba2, dropout=configs.dropout, is_flip=configs.is_flip,
+                        self.mamba1, self.mamba2, configs.d_model, configs.d_ff, dropout=configs.dropout,
+                        activation=configs.activation, is_flip=is_flip,
                 ) for l in range(configs.e_layers)
-            ]  # conv_layers=None, norm_layer=None
+            ],
+            norm_layer=torch.nn.LayerNorm(configs.d_model)  # conv_layers=None
         )
 
         self.lin1 = torch.nn.Linear(self.configs.seq_len, self.configs.d_model)
-        self.linear_head = torch.nn.Linear(self.configs.d_model,self.configs.pred_len)
+        self.linear_head = torch.nn.Linear(self.configs.d_model, self.configs.pred_len)
 
     def forward(self, x):  # the original dimension of `x` is (B, L, D)
         # normalization
@@ -42,11 +56,15 @@ class Model(nn.Module):
             x = x - means
             stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5).detach()
             x /= stdev
-
+        B, L, D = x.shape
         x = torch.permute(x, (0, 2, 1))  # channel mixing: (B, D, L)
-        x = self.lin1(x)  # Embedding: (B, D, E)
+        if self.ch_ind == 1:
+            x = torch.reshape(x, (B * D, 1, L))  # channel independent: (B * D, 1, L)
+        x = self.lin1(x)  # Embedding: CD-(B, D, E), CI-(B * D, 1, E)
         x = self.encoder(x)
-        x = self.linear_head(x)  # (B, D, T)
+        x = self.linear_head(x)  # CD-(B, D, T), CI-(B * D, 1, T)
+        if self.ch_ind == 1:
+            x = torch.reshape(x, (-1, D, self.configs.pred_len))  # (B, D, T)
         x = x.permute(0, 2, 1)  # (B, T, D)
 
         if self.configs.revin == 1:
