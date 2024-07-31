@@ -39,7 +39,7 @@ do
       --d_model 512 \
       --d_state 16 \
       --is_flip 1 \
-      --d_ff 256 \
+      --d_ff 512 \
       --dropout 0.2\
       --fc_dropout 0.1 \
       --head_dropout 0 \

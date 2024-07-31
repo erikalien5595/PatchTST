@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-gpu=1
+gpu=0
 
 if [ ! -d "./logs" ]; then
     mkdir ./logs
@@ -29,6 +29,7 @@ do
       --data $data_name \
       --features M \
       --is_cluster 0 \
+      --ch_ind 1 \
       --n_clusters 5 \
       --revin 1 \
       --seq_len $seq_len \
@@ -38,15 +39,15 @@ do
       --n_heads 16 \
       --d_model 512 \
       --d_state 16 \
+      --d_ff 512 \
       --is_flip 1 \
-      --d_ff 256 \
       --dropout 0.2\
       --fc_dropout 0.1 \
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \
-      --des 'Flip' \
-      --train_epochs 10 \
+      --des 'FlipChannelIndependence' \
+      --train_epochs 20 \
       --patience 10\
       --lradj '5'\
       --pct_start 0.2\

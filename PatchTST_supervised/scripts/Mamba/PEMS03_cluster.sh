@@ -11,14 +11,13 @@ fi
 seq_len=96
 model_name=Mamba
 
-root_path_name=./dataset/
-data_path_name=traffic.csv
-model_id_name=Traffic # 如果是聚类后的模型，model_id_name后面再加上_cluster
-data_name=custom
+root_path_name=./dataset/PEMS/
+data_path_name=PEMS03.npz
+model_id_name=PEMS03 # 如果是聚类后的模型，model_id_name后面再加上_cluster
+data_name=PEMS
 
 random_seed=2024
-n_clusters=2
-for pred_len in 96 192 336 720
+for pred_len in 12 24 48 96
 do
     python -u run_longExp.py \
       --random_seed $random_seed \
@@ -30,26 +29,26 @@ do
       --data $data_name \
       --features M \
       --is_cluster 1 \
-      --n_clusters $n_clusters \
+      --n_clusters 3 \
       --revin 1 \
       --seq_len $seq_len \
       --pred_len $pred_len \
-      --enc_in 862 \
+      --enc_in 358 \
       --e_layers 4 \
       --n_heads 16 \
       --d_model 512 \
       --d_state 16 \
-      --d_ff 512 \
-      --dropout 0.1\
+      --d_ff 256 \
+      --dropout 0.2 \
       --fc_dropout 0.2 \
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \
-      --des 'Cluster'$n_clusters'Flip' \
-      --train_epochs 10 \
-      --patience 10\
+      --des 'Flip' \
+      --train_epochs 5 \
+      --patience 3\
       --lradj '5'\
       --pct_start 0.2\
       --gpu ${gpu} \
-      --itr 1 --batch_size 64 --learning_rate 0.001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
+      --itr 1 --batch_size 32 --learning_rate 0.001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
 done

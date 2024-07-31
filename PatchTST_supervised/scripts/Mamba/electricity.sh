@@ -8,7 +8,7 @@ fi
 if [ ! -d "./logs/LongForecasting" ]; then
     mkdir ./logs/LongForecasting
 fi
-seq_len=192
+seq_len=96
 model_name=Mamba
 
 root_path_name=./dataset/
@@ -16,7 +16,7 @@ data_path_name=electricity.csv
 model_id_name=Electricity # 如果是聚类后的模型，model_id_name后面再加上_cluster
 data_name=custom
 
-random_seed=2021
+random_seed=2024
 for pred_len in 96 192 336 720
 do
     python -u run_longExp.py \
@@ -37,16 +37,16 @@ do
       --n_heads 16 \
       --d_model 512 \
       --d_state 16 \
+      --d_ff 512 \
       --is_flip 1 \
-      --d_ff 256 \
-      --dropout 0.2\
+      --dropout 0.3\
       --fc_dropout 0.2 \
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \
       --des 'Flip' \
       --train_epochs 10 \
-      --patience 10\
+      --patience 5\
       --lradj '5'\
       --pct_start 0.2\
       --gpu ${gpu} \

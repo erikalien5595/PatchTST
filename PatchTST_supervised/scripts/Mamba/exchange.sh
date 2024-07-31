@@ -29,27 +29,26 @@ do
       --data $data_name \
       --features M \
       --is_cluster 0 \
-      --n_clusters 4 \
       --revin 1 \
       --seq_len $seq_len \
       --pred_len $pred_len \
       --enc_in 8 \
       --e_layers 2 \
       --n_heads 16 \
-      --d_model 512 \
-      --d_state 16 \
+      --d_model 128 \
+      --d_state 32 \
+      --d_ff 128 \
       --is_flip 1 \
-      --d_ff 256 \
-      --dropout 0.2\
+      --dropout 0.1\
       --fc_dropout 0.3 \
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \
       --des 'Flip' \
       --train_epochs 10 \
-      --patience 10\
+      --patience 3\
       --lradj '5'\
       --pct_start 0.2\
       --gpu ${gpu} \
-      --itr 1 --batch_size 64 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
+      --itr 1 --batch_size 16 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
 done

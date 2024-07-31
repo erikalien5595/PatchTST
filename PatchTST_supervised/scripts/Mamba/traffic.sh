@@ -34,12 +34,12 @@ do
       --seq_len $seq_len \
       --pred_len $pred_len \
       --enc_in 862 \
-      --e_layers 2 \
+      --e_layers 4 \
       --n_heads 16 \
       --d_model 512 \
       --d_state 16 \
-      --d_ff 256 \
-      --dropout 0.05\
+      --d_ff 512 \
+      --dropout 0.1\
       --fc_dropout 0.2 \
       --head_dropout 0 \
       --patch_len 16 \
@@ -50,5 +50,5 @@ do
       --lradj '5'\
       --pct_start 0.2\
       --gpu ${gpu} \
-      --itr 1 --batch_size 64 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
+      --itr 1 --batch_size 64 --learning_rate 0.001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
 done
