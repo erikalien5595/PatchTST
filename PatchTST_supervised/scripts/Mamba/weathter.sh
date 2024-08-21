@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-gpu=1
+gpu=2
 
 if [ ! -d "./logs" ]; then
     mkdir ./logs
@@ -11,7 +11,7 @@ fi
 seq_len=96
 model_name=Mamba
 
-root_path_name=./dataset/
+root_path_name=./dataset/weather/
 data_path_name=weather.csv
 model_id_name=Weather # 如果是聚类后的模型，model_id_name后面再加上_cluster
 data_name=custom
@@ -29,7 +29,8 @@ do
       --data $data_name \
       --features M \
       --is_cluster 0 \
-      --revin 1 \
+      --ch_ind 1 \
+      --revin 0 \
       --seq_len $seq_len \
       --pred_len $pred_len \
       --enc_in 21 \
@@ -37,18 +38,18 @@ do
       --n_heads 16 \
       --d_model 512 \
       --d_state 16 \
-      --d_ff 256 \
+      --d_ff 512 \
       --is_flip 1 \
-      --dropout 0.3\
+      --dropout 0.1\
       --fc_dropout 0.2 \
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \
-      --des 'FlipChannelMixing' \
-      --train_epochs 20 \
-      --patience 10\
-      --lradj '5'\
+      --des 'FlipChannelIndependence' \
+      --train_epochs 30 \
+      --patience 5\
+      --lradj 'type3'\
       --pct_start 0.2\
       --gpu ${gpu} \
-      --itr 1 --batch_size 512 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
+      --itr 1 --batch_size 256 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
 done

@@ -6,21 +6,75 @@ import torch
 from  data_provider.data_loader import Dataset_ETT_hour, Dataset_Custom
 from matplotlib.backends.backend_pdf import PdfPages
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 from scipy import stats
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, AgglomerativeClustering
+from kshape.core import KShapeClusteringCPU
+from kshape.core_gpu import KShapeClusteringGPU
+from statsmodels.tsa.seasonal import STL
 import seaborn as sns
 import matplotlib.pyplot as plt
-pd.set_option('display.max_columns',None)
 
-if __name__=='__main__':
+from layers.PatchTST_layers import series_decomp
+from utils.tools import find_best_k, correlation_group, correlation_group2, recluster
+
+pd.set_option('display.max_columns', None)
+
+
+def run_kmeans_and_evaluate(X, n_clusters, n_init=100):
+    best_kmeans = None
+    best_score = -float('inf')
+
+    for seed in range(n_init):
+        kmeans = KMeans(n_clusters=n_clusters, random_state=seed)
+        kmeans.fit(X)
+        labels = kmeans.labels_
+        score = silhouette_score(X, labels)  # 你可以选择其他指标，如 inertia、CH 指数等
+        if score > best_score:
+            best_score = score
+            best_kmeans = kmeans
+
+    return best_kmeans, best_score
+
+
+def correlation_tfb(x):
+    '''
+    :param x: numpy array, squared symmetric matrix.
+    :return: correlation defined in the tfb article.
+    '''
+    mask = ~np.eye(x.shape[0], dtype=bool)
+    # 提取非对角元素
+    non_diagonal_elements = x[mask]
+    return np.mean(non_diagonal_elements)+1/(1+np.var(non_diagonal_elements))
+
+
+def get_catch22_data(data):
+    """
+    :param data: 原始的多元时间序列，shape1是通道
+    :return: 提取的22个特征组成的新的多元序列，shape1是通道
+    """
+    tmp = pycatch22.catch22_all(data.iloc[:, 0].values)
+    data2 = pd.DataFrame(np.array(tmp['values']).reshape(1, -1), columns=tmp['names'])
+    for i in range(1, data.shape[1]):
+        tmp = pycatch22.catch22_all(data.iloc[:, i].values)
+        new_line = pd.DataFrame(np.array(tmp['values']).reshape(1, -1), columns=tmp['names'])
+        data2 = pd.concat([data2, new_line])
+    data2 = data2.values.T
+    return data2
+
+
+if __name__ == '__main__':
     scaler = StandardScaler()
     flag = 'train'
     cluster_method = 'kmeans'
-    num_clusters = 2
+    num_clusters = 3
     seq_len = 96
     use_catch22 = 0
-    data_name = 'Solar'
+    threshold = 0.8
+    cluster_random_state = 2024
+    data_name = 'weather'
+    is_abs_order = 1
+    k = 5  # the top number of correlation coefficients
     type_map = {'train': 0, 'val': 1, 'test': 2}
     set_type = type_map[flag]
     ######################### PEMS #########################
@@ -32,7 +86,7 @@ if __name__=='__main__':
     ######################### Solar-Energy #########################
     elif data_name == 'Solar':
         df_raw = []
-        with open('./dataset/solar_AL.txt', "r", encoding='utf-8') as f:
+        with open('./dataset/Solar/solar_AL.txt', "r", encoding='utf-8') as f:
             for line in f.readlines():
                 line = line.strip('\n').split(',')
                 data_line = np.stack([float(i) for i in line])
@@ -51,16 +105,16 @@ if __name__=='__main__':
         elif data_name == 'ETTm2':
             df_raw = pd.read_csv('./dataset/ETT-small/ETTm2.csv')
         elif data_name == 'ECL':
-            df_raw = pd.read_csv('./dataset/electricity.csv')
+            df_raw = pd.read_csv('./dataset/electricity/electricity.csv')
         elif data_name == 'traffic':
-            df_raw = pd.read_csv('./dataset/traffic.csv')#.iloc[:2000]
+            df_raw = pd.read_csv('./dataset/traffic/traffic.csv')#.iloc[:2000]
         elif data_name == 'weather':
-            df_raw = pd.read_csv('./dataset/weather.csv')
-            # # 异常值处理
-            # df_raw.loc[df_raw['OT'] == -9999, 'OT'] = 417  # 替换成均值
-            # df_raw.loc[df_raw['OT'] <350, 'OT'] = 417  # 替换成均值
-            # df_raw.loc[df_raw['max. PAR (�mol/m�/s)'] == -9999, 'max. PAR (�mol/m�/s)'] = 0
-            # df_raw.loc[df_raw['wv (m/s)'] == -9999, 'wv (m/s)'] = 0
+            df_raw = pd.read_csv('./dataset/weather/weather.csv')
+            # 异常值处理
+            df_raw.loc[df_raw['OT'] == -9999, 'OT'] = 417  # 替换成均值
+            df_raw.loc[df_raw['OT'] <350, 'OT'] = 417  # 替换成均值
+            df_raw.loc[df_raw['max. PAR (�mol/m�/s)'] == -9999, 'max. PAR (�mol/m�/s)'] = 0
+            df_raw.loc[df_raw['wv (m/s)'] == -9999, 'wv (m/s)'] = 0
         elif data_name == 'exchange':
             df_raw = pd.read_csv('./dataset/exchange_rate/exchange_rate.csv')
         else:
@@ -118,19 +172,24 @@ if __name__=='__main__':
             plt.close()
         pdf_pages.close()
 
-    # # 创建一个热力图
-    # plt.figure(figsize=[16, 9])
-    # sns.set(font_scale=1.5)
-    # sns.heatmap(np.corrcoef(train_data_std.T), annot=False, cmap='coolwarm')
-    # plt.title(f'Heatmap of Origin Data {data_name}')
-    # plt.show()
+    columns = df_raw.columns
+    # 创建一个热力图
+    plt.figure(figsize=(10, 8))
+    sns.set(font_scale=1.5)
+    # sns.heatmap(np.corrcoef(train_data_std.T), xticklabels=columns, yticklabels=columns, annot=False, cmap='coolwarm')
+    sns.heatmap(np.corrcoef(train_data_std.T), annot=False, cmap='coolwarm')
+    plt.title(f'Correlation Coefficient Heatmap Before Clustering')
+    plt.savefig(f'./clusterResults/heatmap_{data_name}_origin.png', bbox_inches='tight')
 
-    from kshape.core import KShapeClusteringCPU
-    from kshape.core_gpu import KShapeClusteringGPU
+    # new_index, label_dict, sra_dict = correlation_group2(train_data_std, threshold)
+    # print(new_index)
+    # plt.figure(figsize=(10, 8))
+    # sns.set(font_scale=1.5)
+    # sns.heatmap(np.corrcoef(train_data_std[:, new_index].T), annot=False, cmap='coolwarm')
+    # plt.title(f'Heatmap of Grouped Data {data_name}')
+    # plt.savefig(f'./clusterResults/heatmap_{data_name}_group.png', bbox_inches='tight')
 
     if cluster_method == 'kmeans':
-        # 初始化KMeans对象
-        kmeans = KMeans(n_clusters=num_clusters, random_state=42)  # 假设我们要分成3个簇
         if data_name == 'weather':
             train_data.loc[train_data['OT'] == -9999, 'OT'] = 417  # 替换成均值
             train_data.loc[train_data['OT'] < 350, 'OT'] = 417  # 替换成均值
@@ -145,36 +204,42 @@ if __name__=='__main__':
         ###### catch22 to extract features for clustering ######
         if use_catch22==1:
             import pycatch22
-            tmp = pycatch22.catch22_all(train_data.iloc[:, 0].values)
-            data2 = pd.DataFrame(np.array(tmp['values']).reshape(1, -1), columns=tmp['names'])
-            for i in range(1, train_data.shape[1]):
-                tmp = pycatch22.catch22_all(train_data.iloc[:, i].values)
-                new_line = pd.DataFrame(np.array(tmp['values']).reshape(1, -1), columns=tmp['names'])
-                data2 = pd.concat([data2, new_line])
-            data2 = data2.values.T
+            data2 = get_catch22_data(train_data)
+            df_catch22 = get_catch22_data(df_raw)
+            corr_whole = np.corrcoef(df_catch22.T)
+            corr = stats.spearmanr(data2)[0]  # 相关系数矩阵
+            corr_pearson = np.corrcoef(data2.T)  # 相关系数矩阵
+            corr_origin = np.corrcoef(train_data.T)  # 用于比较catch22相关性和原序列相关性的标准化序列，不参与后续聚类计算
+            corr_of_corr = np.row_stack([corr_origin.reshape(1, -1), corr_pearson.reshape(1, -1)])
+            print(corr_of_corr.shape, "catch22相关矩阵和原序列相关矩阵的相关性", np.round(np.corrcoef(corr_of_corr)[0, 1], 4))
+            if data_name == 'weather':
+                df_outlier_remove_catch22 = get_catch22_data(df_data)
+                corr_df_outlier_remove_catch22_whole = np.corrcoef(df_outlier_remove_catch22.T)
+                print('catch22之后的数据shape：', data2.shape,
+                      '\n完整数据correlation', np.round(correlation_tfb(corr_whole), 4),
+                      '\n完整数据修改异常值后的correlation', np.round(correlation_tfb(corr_df_outlier_remove_catch22_whole), 4),
+                      "\n整体correlation (pearson)", np.round(correlation_tfb(corr_pearson), 4),
+                      "\n整体correlation (spearman)", np.round(correlation_tfb(corr), 4))
+            else:
+                print('catch22之后的数据shape：', data2.shape,
+                      '\n完整数据correlation', np.round(correlation_tfb(corr_whole), 4),
+                      "\n整体correlation (pearson)", np.round(correlation_tfb(corr_pearson), 4),
+                      "\n整体correlation (spearman)", np.round(correlation_tfb(corr), 4))
             scaler3 = StandardScaler()
             data2 = scaler3.fit_transform(data2)
         ########################################################
-        print(data2.shape, data2.mean())
-        k_score, k_shape = [], []
-        for i in np.arange(2, 11):
-        # for i in np.arange(2, np.min(8, data2.shape[1])):
-            # 对数据进行聚类
-            kmeans2 = KMeans(n_clusters=i, random_state=42)
-            kmeans2.fit(data2.T)  # PEMS
-            # kmeans.fit(df_raw_std.T)  # ECL, traffic, weather
-            # 获取聚类中心
-            cluster_centroids = kmeans2.cluster_centers_
-            # 获取每个样本的聚类标签
-            labels = kmeans2.labels_
-            score = silhouette_score(data2.T, labels)
-            k_score.append(score)
-            k_shape.append(i)
-            print(f'n={i}, silhouette_score={np.round(score, 4)}')
-        dict_shape = dict(zip(k_shape, k_score))
-        best_shape = sorted(dict_shape.items(), key=lambda x: x[1], reverse=True)[0][0]
-        print(best_shape)
-
+        ################# 序列分解 只对季节项聚类 ###################
+        # _, D = data2.shape
+        # tmp = torch.Tensor(data2).reshape((1, -1, D))
+        # decomp_module = series_decomp(1001)
+        # season, trend = decomp_module(tmp)
+        # season = season.numpy().reshape(-1, D)
+        # print('季节项', season.shape)
+        ########################################################
+        best_shape = 3#find_best_k(data2, 'train', random_state=cluster_random_state)
+        # 初始化KMeans对象
+        # aggcluster = AgglomerativeClustering(n_clusters=2)
+        kmeans = KMeans(n_clusters=best_shape, n_init=20, random_state=cluster_random_state)  # 假设我们要分成3个簇
         # 对数据进行聚类
         kmeans.fit(data2.T)  # PEMS
         # kmeans.fit(df_raw_std.T)  # ECL, traffic, weather
@@ -183,7 +248,6 @@ if __name__=='__main__':
         # 获取每个样本的聚类标签
         labels = kmeans.labels_
         score = silhouette_score(data2.T, labels)
-        print(f'silhouette_score={score}')
     elif cluster_method == 'kshape':
         univariate_ts_datasets = np.expand_dims(train_data_std.T, axis=2)
         ##### CPU Model #####
@@ -199,59 +263,126 @@ if __name__=='__main__':
         # cluster_centroids = ksg.centroids_.detach().cpu().squeeze()
     else:
         pass
-    print(labels.shape, labels, np.unique(labels))
     # print(cluster_centroids.shape, cluster_centroids)
     # 计算每个类别的数量
     label_counts = np.bincount(np.int64(labels))
-
-    # 打印每个类别的数量
-    for label, count in enumerate(label_counts):
-        print(f'Category {label}: {count} sequences')
-
     # 建立一个字典，用于保存聚类以后每一类的变量index
     label_dict = {}
     for label in np.unique(labels):
         if 'label' not in label_dict:
             label_dict[label] = list(np.where(labels == label)[0])
         # print(df_raw.iloc[:, np.where(labels == label)[0]])
-    print(label_dict)
-
     # 按聚类结果排序
     sorted_indices = np.argsort(labels)
     # sorted_data = df_raw_std[:, sorted_indices]
     sorted_data = data2[:, sorted_indices]
+    columns_cluster = df_raw.columns[sorted_indices]
+
+    corr = np.corrcoef(data2.T)
+    np.fill_diagonal(corr, 0)
+    print(f'corr={np.round(corr, 4)}')
+    if is_abs_order:
+        corr_rank = np.fliplr(np.argsort(np.abs(corr), axis=1))
+    else:
+        corr_rank = np.fliplr(np.argsort(corr, axis=1))
+    # print(corr_rank)
+    results=[]
+    n_features_ = data2.shape[1]
+    for i in range(n_features_):
+        tmp = []
+        for j in range(n_features_):
+            if corr_rank[i][j] != i:
+                tmp.append(corr_rank[i][j])
+        results.append(tmp)
+    result_arr = np.array(results)
+    adj_k = result_arr[:, :k]
+    # print(adj_k)
+    corr_top_k = np.zeros((n_features_, k))
+    for i in range(n_features_):
+        corr_top_k[i] = corr[i, adj_k[i]]
+        # print(i, corr[i, adj_k[i]])
+    # print(corr_top_k)
+    print(corr_top_k.max(axis=1).round(3))
+    corr_max = corr_top_k.max(axis=1)
+    plt.figure()
+    plt.hist(corr_max, bins=20)
+    plt.savefig(f'./clusterResults/hist_{data_name}_maxcorr_abs{is_abs_order}.png', bbox_inches='tight')
+    plt.close()
+    plt.figure(figsize=(10, 8))
+    # sns.heatmap(np.corrcoef(sorted_data.T), cmap='coolwarm', xticklabels=columns_cluster, yticklabels=columns_cluster, annot=False)
+    sns.heatmap(corr_top_k, cmap='coolwarm', annot=False)
+    plt.title(f'Correlation Coefficient Heatmap For top{k}')
+    plt.savefig(f'./clusterResults/heatmap_{data_name}_top{k}_abs{is_abs_order}.png', bbox_inches='tight')
+    plt.close()
+
+
+    # 使用seaborn绘制热力图
+    plt.figure(figsize=(10, 8))
+    # sns.heatmap(np.corrcoef(sorted_data.T), cmap='coolwarm', xticklabels=columns_cluster, yticklabels=columns_cluster, annot=False)
+    sns.heatmap(np.corrcoef(sorted_data.T), cmap='coolwarm', annot=False)
+    plt.title(f'Correlation Coefficient Heatmap After Clustering')
+    plt.savefig(f'./clusterResults/heatmap_{data_name}_cluster{best_shape}_usecatch{use_catch22}.png', bbox_inches='tight')
+    plt.close()
+    # plt.figure(figsize=(10, 8))
+    # sns.heatmap(stats.spearmanr(sorted_data)[0], cmap='coolwarm', annot=False)
+    # plt.title(f'Heatmap of Clustered Data for {data_name}(Spearman Correlation)')
+    # plt.xlabel('Sequence Index')
+    # plt.ylabel('Data Points')
+    # plt.savefig(f'./clusterResults/heatmap_{data_name}_cluster{best_shape}_usecatch{use_catch22}_Spearman.png', bbox_inches='tight')
+    # plt.close()
+
+    sra_dict = {}
     for i in label_dict:
         # corr = np.corrcoef(train_data_std[:, label_dict[i]].T)
-        if len(label_dict[i])>2:
+        if len(label_dict[i])>=2:
             # 生成一个布尔掩码矩阵，掩盖对角元素
-            corr = stats.spearmanr(data2[:, label_dict[i]])[0]
+            # corr = stats.spearmanr(data2[:, label_dict[i]])[0]
+            corr = np.corrcoef(data2[:, label_dict[i]].T)
             mask = ~np.eye(corr.shape[0], dtype=bool)
             # 提取非对角元素
             non_diagonal_elements = corr[mask]
-            print(f"第{i}类：", np.round(np.mean(np.abs(non_diagonal_elements)), 5),
-                  np.round(np.min(np.abs(non_diagonal_elements)), 5),
-                  np.round(np.max(np.abs(non_diagonal_elements)), 5),
-                  train_data.columns[label_dict[i]], np.var(np.abs(non_diagonal_elements)), np.mean(np.abs(non_diagonal_elements))+1/(1+np.std(np.abs(non_diagonal_elements))))
-        elif len(label_dict[i])==2:
-            corr = stats.spearmanr(data2[:, label_dict[i]])[0]
-            print(f"第{i}类：", np.round(corr, 5), train_data.columns[label_dict[i]])
+            sra_dict[i] = np.mean(non_diagonal_elements)
+            # print(f"第{i}类：", np.round(np.mean(np.abs(non_diagonal_elements)), 4),
+            #       np.round(np.min(np.abs(non_diagonal_elements)), 4),
+            #       np.round(np.max(np.abs(non_diagonal_elements)), 4),
+            #       train_data.columns[label_dict[i]], np.round(np.var(non_diagonal_elements), 4),
+            #       np.round(np.mean(non_diagonal_elements)+1/(1+np.std(non_diagonal_elements)), 4))
+            print(f"第{i}类：", np.round(np.mean(non_diagonal_elements), 4),
+                  np.round(np.min(non_diagonal_elements), 4),
+                  np.round(np.max(non_diagonal_elements), 4),
+                  train_data.columns[label_dict[i]], np.round(np.var(non_diagonal_elements), 4),
+                  np.round(np.mean(non_diagonal_elements) + 1 / (1 + np.std(non_diagonal_elements)), 4))
+        # elif len(label_dict[i])==2:
+        #     corr = stats.spearmanr(data2[:, label_dict[i]])[0]
+        #     print(f"第{i}类：", np.round(corr, 4), train_data.columns[label_dict[i]])
         else:
+            sra_dict[i] = 0
             print(f"第{i}类只有1个序列: {train_data.columns[label_dict[i]]}")
+
+    print(f"\n>>>>>>>>>>>>Before ReClustering: {len(label_dict.keys())} clusters in total.")
+    for key, value in label_dict.items():
+        print(f"  Category {key}: {len(value)} sequences, mean(corr)={np.round(sra_dict[key], 4):.4f}, "
+              f"channels in this cluster: {value}")
+
+    new_labels, new_cluster_centroids, new_label_dict, new_sra_dict = recluster(data2, labels, cluster_centroids, label_dict, sra_dict, threshold=0.8)
+    # 重新按聚类结果排序
+    sorted_indices = np.argsort(new_labels)
+    sorted_data = data2[:, sorted_indices]
+    columns_cluster = df_raw.columns[sorted_indices]
     # 使用seaborn绘制热力图
     plt.figure(figsize=(10, 8))
-    sns.heatmap(np.corrcoef(sorted_data.T), cmap='coolwarm', annot=False)
-    plt.title(f'Heatmap of Clustered Data for {data_name}')
-    plt.xlabel('Sequence Index')
-    plt.ylabel('Data Points')
-    plt.savefig(f'./clusterResults/heatmap_{data_name}_cluster{num_clusters}.png', bbox_inches='tight')
+    sns.heatmap(np.corrcoef(sorted_data.T), xticklabels=columns_cluster, yticklabels=columns_cluster,
+                cmap='coolwarm', annot=False)
+    plt.title(f'Correlation Coefficient Heatmap After ReClustering')
+    plt.savefig(f'./clusterResults/heatmap_{data_name}_cluster{best_shape}_recluster{len(new_label_dict.keys())}_usecatch{use_catch22}.png', bbox_inches='tight')
     plt.close()
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(stats.spearmanr(sorted_data)[0], cmap='coolwarm', annot=False)
-    plt.title(f'Heatmap of Clustered Data for {data_name}(Spearman Correlation)')
-    plt.xlabel('Sequence Index')
-    plt.ylabel('Data Points')
-    plt.savefig(f'./clusterResults/heatmap_{data_name}_cluster{num_clusters}_Spearman.png', bbox_inches='tight')
-    plt.close()
+    # plt.figure(figsize=(10, 8))
+    # sns.heatmap(stats.spearmanr(sorted_data)[0], cmap='coolwarm', annot=False)
+    # plt.title(f'Heatmap of Clustered Data for {data_name}(Spearman Correlation)')
+    # plt.xlabel('Sequence Index')
+    # plt.ylabel('Data Points')
+    # plt.savefig(f'./clusterResults/heatmap_{data_name}_cluster{best_shape}_recluster{len(new_label_dict.keys())}_usecatch{use_catch22}_Spearman.png', bbox_inches='tight')
+    # plt.close()
     # sns.heatmap(stats.spearmanr(sorted_data)[0]-np.corrcoef(sorted_data.T), cmap='coolwarm', annot=False)
     # plt.title(f'Heatmap of Clustered Data for {data_name}(Correlation Difference)')
     # plt.xlabel('Sequence Index')
@@ -262,8 +393,6 @@ if __name__=='__main__':
     # 颜色定义
     colors = ['red', 'blue', 'green', 'black', 'orange']
     light_colors = ['lightcoral', 'lightblue', 'lightgreen', 'grey', 'pink']
-    # 绘制原始序列和中心序列
-    pdf_pages = PdfPages(f'./clusterResults/{data_name}_cluster{num_clusters}.pdf')
     for i, center in enumerate(cluster_centroids):
         fig = plt.figure(figsize=[12, 9])
         # cluster_data = df_raw_std[:, labels == i]
@@ -271,11 +400,44 @@ if __name__=='__main__':
             cluster_data = data2[:, labels == i]
         else:
             cluster_data = train_data_std[:, labels == i]
-        plt.plot(cluster_data[0:], color=light_colors[i%3], alpha=0.5)
-        plt.plot(center[0:], '--', color=colors[i%3], linewidth=2, label=f'Center {i + 1}')
-        plt.xlabel('Sequence Index')
+        plt.plot(cluster_data[-400:], color=light_colors[i%3], alpha=0.5)
+        plt.plot(center[-400:], '--', color=colors[i%3], linewidth=2, label=f'Center {i + 1}')
+        plt.xlabel('Step', fontsize=30)
+        plt.ylabel('Value', fontsize=30)
+        plt.xticks(size=26)
+        plt.yticks(size=26)
+        plt.title(f'Series and Their Centers in cluster {i+1}', fontsize=30)
+        plt.savefig(f'./clusterResults/{data_name}_cluster{best_shape}_usecatch{use_catch22}_{i}.png', bbox_inches='tight')
+    # 绘制原始序列和中心序列
+    pdf_pages = PdfPages(f'./clusterResults/{data_name}_cluster{best_shape}_usecatch{use_catch22}.pdf')
+    for i, center in enumerate(cluster_centroids):
+        fig = plt.figure(figsize=[12, 9])
+        # cluster_data = df_raw_std[:, labels == i]
+        if use_catch22==1:
+            cluster_data = data2[:, labels == i]
+        else:
+            cluster_data = train_data_std[:, labels == i]
+        plt.plot(cluster_data[-400:], color=light_colors[i%3], alpha=0.5)
+        plt.plot(center[-400:], '--', color=colors[i%3], linewidth=2, label=f'Center {i + 1}')
+        plt.xlabel('Step')
         plt.ylabel('Value')
-        plt.title(f'Clustered Sequences and Their Centers for cluster {i}')
+        plt.title(f'Series and Their Centers in cluster {i}', fontsize=24)
+        pdf_pages.savefig(fig, bbox_inches='tight')
+        plt.close()
+    pdf_pages.close()
+    pdf_pages = PdfPages(f'./clusterResults/{data_name}_new_cluster{best_shape}_usecatch{use_catch22}.pdf')
+    for i, center in enumerate(new_cluster_centroids):
+        fig = plt.figure(figsize=[12, 9])
+        # cluster_data = df_raw_std[:, labels == i]
+        if use_catch22==1:
+            cluster_data = data2[:, new_labels == i]
+        else:
+            cluster_data = train_data_std[:, new_labels == i]
+        plt.plot(cluster_data[-400:], color=light_colors[i%3], alpha=0.5)
+        plt.plot(center[-400:], '--', color=colors[i%3], linewidth=2, label=f'Center {i + 1}')
+        plt.xlabel('Step', fontsize=24)
+        plt.ylabel('Value', fontsize=24)
+        plt.title(f'Series and Their Centers in cluster {i}', fontsize=24)
         pdf_pages.savefig(fig, bbox_inches='tight')
         plt.close()
     pdf_pages.close()

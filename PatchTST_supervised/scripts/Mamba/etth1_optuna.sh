@@ -9,14 +9,13 @@ if [ ! -d "./logs/LongForecasting" ]; then
     mkdir ./logs/LongForecasting
 fi
 seq_len=96
-model_name=Mamba2
+model_name=Mamba
 
 root_path_name=./dataset/ETT-small/
 data_path_name=ETTh1.csv
 model_id_name=ETTh1 # 如果是聚类后的模型，model_id_name后面再加上_cluster
 data_name=ETTh1
 
-random_seed=2024
 for random_seed in 2024 #2023 2024 42 1107 2025
 do
   for ch_ind in 1 #0 1
@@ -29,7 +28,7 @@ do
     echo 'ch_ind='$ch_ind', which means '$ch_ind_name
     for pred_len in 96 #96 192 336 720
     do
-        python -u run_longExp.py \
+        python -u search_hyperparameters.py \
           --random_seed $random_seed \
           --is_training 1 \
           --ch_ind $ch_ind \

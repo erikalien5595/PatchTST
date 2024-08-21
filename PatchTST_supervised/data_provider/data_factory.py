@@ -1,3 +1,7 @@
+import random
+import torch
+import numpy as np
+
 from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, Dataset_PEMS
 from torch.utils.data import DataLoader
 
@@ -36,6 +40,7 @@ def data_provider(args, flag):
         root_path=args.root_path,
         data_path=args.data_path,
         use_catch22=args.use_catch22,
+        corr_threshold=args.corr_threshold,
         flag=flag,
         size=[args.seq_len, args.label_len, args.pred_len],
         n_clusters=args.n_clusters,
@@ -46,6 +51,18 @@ def data_provider(args, flag):
         freq=freq
     )
     print(flag, len(data_set))
+    # print(batch_size, shuffle_flag, args.num_workers, drop_last)
+    # for i in range(data_set.__len__()):
+    #     if i<5:
+    #         print(data_set.__getitem__(i)[1][:2, :1])
+    # # random seed
+    # fix_seed = 2024#args.random_seed
+    # random.seed(fix_seed)
+    # torch.manual_seed(fix_seed)
+    # torch.cuda.manual_seed(fix_seed)
+    # torch.cuda.manual_seed_all(fix_seed)
+    # np.random.seed(fix_seed)
+
     data_loader = DataLoader(
         data_set,
         batch_size=batch_size,

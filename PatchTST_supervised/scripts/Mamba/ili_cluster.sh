@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-gpu=2
+gpu=1
 
 if [ ! -d "./logs" ]; then
     mkdir ./logs
@@ -17,7 +17,7 @@ model_id_name=ILI # 如果是聚类后的模型，model_id_name后面再加上_c
 data_name=custom
 
 random_seed=2024
-n_clusters=3
+n_clusters=2
 for pred_len in 24 36 48 60
 do
     python -u run_longExp.py \
@@ -31,6 +31,7 @@ do
       --features M \
       --is_cluster 1 \
       --n_clusters $n_clusters \
+      --use_catch22 1 \
       --revin 1 \
       --seq_len $seq_len \
       --pred_len $pred_len \
@@ -41,15 +42,15 @@ do
       --d_state 16 \
       --d_ff 512 \
       --is_flip 1 \
-      --dropout 0.2\
+      --dropout 0.1\
       --fc_dropout 0.2 \
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \
       --des 'Cluster'$n_clusters'Flip' \
-      --train_epochs 10 \
+      --train_epochs 100 \
       --patience 5\
-      --lradj '5'\
+      --lradj 'type3'\
       --pct_start 0.2\
       --gpu ${gpu} \
       --itr 1 --batch_size 16 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log

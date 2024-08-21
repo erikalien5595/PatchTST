@@ -9,7 +9,7 @@ if [ ! -d "./logs/LongForecasting" ]; then
     mkdir ./logs/LongForecasting
 fi
 seq_len=96
-model_name=Mamba
+model_name=Mamba2
 
 root_path_name=./dataset/exchange_rate/
 data_path_name=exchange_rate.csv
@@ -32,15 +32,16 @@ do
         --features M \
         --is_cluster 1 \
         --n_clusters $n_clusters \
+        --corr_threshold 0.8 \
         --use_catch22 0 \
-        --revin 1 \
+        --revin 0 \
         --seq_len $seq_len \
         --pred_len $pred_len \
         --enc_in 8 \
         --e_layers 2 \
         --n_heads 16 \
         --d_model 128 \
-        --d_state 32 \
+        --d_state 16 \
         --d_ff 128 \
         --is_flip 1 \
         --dropout 0.1\
@@ -49,9 +50,9 @@ do
         --patch_len 16 \
         --stride 8 \
         --des 'Cluster'$n_clusters'Flip' \
-        --train_epochs 10 \
-        --patience 3\
-        --lradj '5'\
+        --train_epochs 30 \
+        --patience 5\
+        --lradj 'type3'\
         --pct_start 0.2\
         --gpu ${gpu} \
         --itr 1 --batch_size 16 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log

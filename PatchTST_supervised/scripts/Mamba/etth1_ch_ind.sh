@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-gpu=0
+gpu=2
 
 if [ ! -d "./logs" ]; then
     mkdir ./logs
@@ -9,7 +9,7 @@ if [ ! -d "./logs/LongForecasting" ]; then
     mkdir ./logs/LongForecasting
 fi
 seq_len=96
-model_name=Mamba2
+model_name=Mamba
 
 root_path_name=./dataset/ETT-small/
 data_path_name=ETTh1.csv
@@ -19,7 +19,7 @@ data_name=ETTh1
 random_seed=2024
 for random_seed in 2024 #2023 2024 42 1107 2025
 do
-  for ch_ind in 1 #0 1
+  for ch_ind in 1
   do
     if [ $ch_ind == 0 ]
       then ch_ind_name='ChannelMixing'
@@ -27,7 +27,7 @@ do
       ch_ind_name='ChannelIndependence'
     fi
     echo 'ch_ind='$ch_ind', which means '$ch_ind_name
-    for pred_len in 96 #96 192 336 720
+    for pred_len in 96 #192 336 720
     do
         python -u run_longExp.py \
           --random_seed $random_seed \
@@ -45,7 +45,7 @@ do
           --seq_len $seq_len \
           --pred_len $pred_len \
           --enc_in 7 \
-          --e_layers 4 \
+          --e_layers 3 \
           --n_heads 16 \
           --d_model 512 \
           --d_state 16 \
@@ -56,13 +56,13 @@ do
           --head_dropout 0 \
           --patch_len 16 \
           --stride 8 \
-          --des 'Flip_'$ch_ind_name'_Seed'$random_seed \
+          --des 'Flip_'$ch_ind_name'_BL1_Seed'$random_seed \
           --train_epochs 30 \
           --patience 5\
           --lradj 'type3'\
           --pct_start 0.2\
           --gpu ${gpu} \
-          --itr 1 --batch_size 256 --learning_rate 0.00005 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
+          --itr 1 --batch_size 32 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
     done
   done
 done

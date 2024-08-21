@@ -7,7 +7,7 @@ import torch
 from mamba_ssm import Mamba
 from layers.SelfAttention_Family import FullAttention, AttentionLayer
 class EncoderLayer(nn.Module):
-    def __init__(self, mamba1, mamba2, d_model, d_ff, dropout=0.05, activation='gelu', is_flip=1):
+    def __init__(self, mamba1, mamba2, d_model, d_ff, dropout=0.1, activation='gelu', is_flip=1):
         super(EncoderLayer, self).__init__()
         self.conv1 = nn.Conv1d(in_channels=d_model, out_channels=d_ff, kernel_size=1)
         self.conv2 = nn.Conv1d(in_channels=d_ff, out_channels=d_model, kernel_size=1)
@@ -20,16 +20,17 @@ class EncoderLayer(nn.Module):
         self.is_flip = is_flip
 
     def forward(self, x):
-        x_res = x
-        x = self.dropout(x)
         # if self.is_flip:
         #     new_x = self.mamba1(x) + self.mamba2(x.flip(dims=[1])).flip(dims=[1])  # B, D, E
         # else:
         #     new_x = self.mamba1(x)
-        new_x = self.mamba1(x) + self.mamba2(x.flip(dims=[1])).flip(dims=[1])  # B, D, E
-        x = new_x + x_res
-        # x = self.dropout(new_x) + x_res
-
+        if x.shape[2]==1 or x.shape[1]==1:  # CI case: (BD, E, 1)
+            new_x = self.mamba1(x)
+        else:
+            new_x = self.mamba1(x) + self.mamba2(x.flip(dims=[1])).flip(dims=[1])  # B, D, E
+        # x = x + new_x
+        # return x
+        x = new_x + x
         y = x = self.norm1(x)
         y = self.dropout(self.activation(self.conv1(y.transpose(-1, 1))))
         y = self.dropout(self.conv2(y).transpose(-1, 1))

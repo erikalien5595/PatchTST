@@ -4,6 +4,101 @@ import torch
 from exp.exp_main import Exp_Main
 import random
 import numpy as np
+import sys
+import optuna
+from optuna.trial import TrialState
+
+def objective(trial):
+    """
+    Single parameter selection.
+
+    :param trial: An optuna parameter selection trial.
+    :param args: Hyperparameters from 'argparse'.
+
+    :return: The MSE/MAE result for each Optuna trial to record the best result.
+    """
+
+    # parameters settings
+    args.d_model = trial.suggest_categorical('d_model', [128, 256, 512])
+    args.d_state = trial.suggest_categorical('d_state', [2, 8, 16])
+    args.d_ff = trial.suggest_categorical('d_ff', [128, 256, 512])
+    # args.ch_id = trial.suggest_int('ch_id', 0, 1)
+    args.corr_threshold = trial.suggest_categorical('corr_threshold', [0.6, 0.7, 0.8])
+    args.e_layers = trial.suggest_int('e_layers', 2, 4)
+    args.patience = trial.suggest_categorical('patience', [5, 7])
+    args.learning_rate = trial.suggest_loguniform('learning_rate', 1e-5, 1e-3)
+
+    # args.learning_rate = trial.suggest_float("learning_rate", 0.0001, 0.0016, step=0.00007)
+    # args.dropout = trial.suggest_float("dropout", 0.2, 0.4, step=0.05)
+    # args.d_conv = trial.suggest_int("d_conv", 1, 4,step=1)
+    # args.d_state = trial.suggest_int("d_state", 1, 32, step=1)
+
+    print('Args in experiment:')
+    print(args)
+
+    Exp = Exp_Main
+
+    if args.is_training:
+        for ii in range(args.itr):
+            # setting record of experiments
+            setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_ds{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+                args.model_id,
+                args.model,
+                args.data,
+                args.features,
+                args.seq_len,
+                args.label_len,
+                args.pred_len,
+                args.d_state,
+                args.d_model,
+                args.n_heads,
+                args.e_layers,
+                args.d_layers,
+                args.d_ff,
+                args.factor,
+                args.embed,
+                args.distil,
+                args.des,ii)
+
+            exp = Exp(args)  # set experiments
+            print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
+            print('开始训练时的卡数：', torch.cuda.device_count())
+            exp.train(setting)
+
+            print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+            mse = exp.test(setting)
+
+            # if args.do_predict:
+            #     print('>>>>>>>predicting : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+            #     exp.predict(setting, True)
+
+            torch.cuda.empty_cache()
+            return mse
+    else:
+        ii = 0
+        setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_ds_{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(args.model_id,
+                                                                                                    args.model,
+                                                                                                    args.data,
+                                                                                                    args.features,
+                                                                                                    args.seq_len,
+                                                                                                    args.label_len,
+                                                                                                    args.pred_len,
+                                                                                                    args.d_state,
+                                                                                                    args.d_model,
+                                                                                                    args.n_heads,
+                                                                                                    args.e_layers,
+                                                                                                    args.d_layers,
+                                                                                                    args.d_ff,
+                                                                                                    args.factor,
+                                                                                                    args.embed,
+                                                                                                    args.distil,
+                                                                                                    args.des, ii)
+
+        exp = Exp(args)  # set experiments
+        print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+        mse = exp.test(setting, test=1)
+        torch.cuda.empty_cache()
+        return mse
 
 if __name__ == '__main__':
     torch.multiprocessing.set_sharing_strategy('file_system')
@@ -91,7 +186,7 @@ if __name__ == '__main__':
     parser.add_argument('--itr', type=int, default=2, help='experiments times')
     parser.add_argument('--train_epochs', type=int, default=100, help='train epochs')
     parser.add_argument('--batch_size', type=int, default=128, help='batch size of train input data')
-    parser.add_argument('--patience', type=int, default=100, help='early stopping patience')
+    parser.add_argument('--patience', type=int, default=10, help='early stopping patience')
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
     parser.add_argument('--des', type=str, default='test', help='exp description')
     parser.add_argument('--loss', type=str, default='mse', help='loss function')
@@ -109,10 +204,10 @@ if __name__ == '__main__':
     # cluster
     parser.add_argument('--is_cluster', type=int, default=0, help='1: cluster for channels, 0: not cluster')
     parser.add_argument('--n_clusters', type=int, default=3, help='the number of clusters for the channels')
-    parser.add_argument('--corr_threshold', type=float, default=0.8, help='the threshold of mean '
-                                                                          'correlation to decide whether we use CD or CI strategy')
     parser.add_argument('--use_catch22', type=int, default=0, help='whether use catch22 to extract time '
                                                                    'series features for clustering')
+    parser.add_argument('--corr_threshold', type=float, default=0.8, help='the threshold of mean '
+                                                                          'correlation to decide whether we use CD or CI strategy')
 
     args = parser.parse_args()
 
@@ -131,68 +226,27 @@ if __name__ == '__main__':
         args.device_ids = [int(id_) for id_ in device_ids]
         args.gpu = args.device_ids[0]
 
-    print('Args in experiment:')
-    print(args)
+    study = optuna.create_study(direction="minimize", study_name=f"{args.model_id}", storage='sqlite:///optunaResults/Mamba2.sqlite3', load_if_exists=True)
+    study.optimize(objective, n_trials=100)
 
-    Exp = Exp_Main
+    pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
 
-    if args.is_training:
-        for ii in range(args.itr):
-            # setting record of experiments
-            setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_ds{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
-                args.model_id,
-                args.model,
-                args.data,
-                args.features,
-                args.seq_len,
-                args.label_len,
-                args.pred_len,
-                args.d_state,
-                args.d_model,
-                args.n_heads,
-                args.e_layers,
-                args.d_layers,
-                args.d_ff,
-                args.factor,
-                args.embed,
-                args.distil,
-                args.des,ii)
+    print("Study statistics: ")
+    print("  Number of finished trials: ", len(study.trials))
+    print("  Number of pruned trials: ", len(pruned_trials))
+    print("  Number of complete trials: ", len(complete_trials))
 
-            exp = Exp(args)  # set experiments
-            print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
-            print('开始训练时的卡数：', torch.cuda.device_count())
-            exp.train(setting)
+    print("Best trial:")
+    trial = study.best_trial
 
-            print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-            exp.test(setting)
+    print("  Value: ", trial.value)
 
-            if args.do_predict:
-                print('>>>>>>>predicting : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-                exp.predict(setting, True)
+    print("  Params: ")
+    for key, value in trial.params.items():
+        print("    {}: {}".format(key, value))
 
-            torch.cuda.empty_cache()
-    else:
-        ii = 0
-        setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_ds_{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(args.model_id,
-                                                                                                    args.model,
-                                                                                                    args.data,
-                                                                                                    args.features,
-                                                                                                    args.seq_len,
-                                                                                                    args.label_len,
-                                                                                                    args.pred_len,
-                                                                                                    args.d_state,
-                                                                                                    args.d_model,
-                                                                                                    args.n_heads,
-                                                                                                    args.e_layers,
-                                                                                                    args.d_layers,
-                                                                                                    args.d_ff,
-                                                                                                    args.factor,
-                                                                                                    args.embed,
-                                                                                                    args.distil,
-                                                                                                    args.des, ii)
-
-        exp = Exp(args)  # set experiments
-        print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-        exp.test(setting, test=1)
-        torch.cuda.empty_cache()
+    df = study.trials_dataframe()
+    # 保存
+    df.to_csv(f'./optunaResults/{args.model_id}_optuna_trail_data.csv', index=False)
         

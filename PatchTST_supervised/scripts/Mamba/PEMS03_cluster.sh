@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-gpu=2
+gpu=3
 
 if [ ! -d "./logs" ]; then
     mkdir ./logs
@@ -9,7 +9,7 @@ if [ ! -d "./logs/LongForecasting" ]; then
     mkdir ./logs/LongForecasting
 fi
 seq_len=96
-model_name=Mamba
+model_name=Mamba2
 
 root_path_name=./dataset/PEMS/
 data_path_name=PEMS03.npz
@@ -30,16 +30,17 @@ do
       --features M \
       --is_cluster 1 \
       --n_clusters 3 \
-      --revin 1 \
+      --corr_threshold 0.8 \
+      --revin 0 \
       --seq_len $seq_len \
       --pred_len $pred_len \
       --enc_in 358 \
       --e_layers 4 \
       --n_heads 16 \
       --d_model 512 \
-      --d_state 16 \
-      --d_ff 256 \
-      --dropout 0.2 \
+      --d_state 32 \
+      --d_ff 512 \
+      --dropout 0.1 \
       --fc_dropout 0.2 \
       --head_dropout 0 \
       --patch_len 16 \

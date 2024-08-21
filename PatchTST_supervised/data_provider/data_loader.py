@@ -6,6 +6,8 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 from scipy import stats
+
+from layers.PatchTST_layers import series_decomp
 # # 获取当前文件所在目录的父目录的父目录
 # parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #
@@ -17,13 +19,15 @@ from scipy import stats
 from utils.timefeatures import time_features
 import warnings
 from sklearn.cluster import KMeans
+from utils.tools import get_catch22_data, recluster, get_label_sra_dict, find_best_k, correlation_group, \
+    correlation_group_2class
 
 warnings.filterwarnings('ignore')
 
 
 class Dataset_ETT_hour(Dataset):
-    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=42, is_cluster=0,
-                 features='S', data_path='ETTh1.csv', use_catch22=False,
+    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=2024, is_cluster=0,
+                 features='S', data_path='ETTh1.csv', use_catch22=False, corr_threshold=0.8,
                  target='OT', scale=True, timeenc=0, freq='h'):
         # size [seq_len, label_len, pred_len]
         # info
@@ -50,6 +54,8 @@ class Dataset_ETT_hour(Dataset):
         self.timeenc = timeenc
         self.freq = freq
         self.flag = flag
+        self.use_catch22 = use_catch22
+        self.corr_threshold = corr_threshold
 
         self.root_path = root_path
         self.data_path = data_path
@@ -79,50 +85,40 @@ class Dataset_ETT_hour(Dataset):
             data = df_data.values
 
         if self.is_cluster:
-            # 对数据进行聚类
-            kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
-            train_data_std = data[border1s[0]:border2s[0]]
-            kmeans.fit(data[border1s[0]:border2s[0]].T)
-            # 获取每个样本的聚类标签
-            labels = kmeans.labels_
-            # 计算每个类别的数量
-            label_counts = np.bincount(np.int64(labels))
-            # 打印每个类别的数量
-            if self.flag=='train':
-                print(f'Clustering Result:')
-                for label, count in enumerate(label_counts):
-                    print(f'    Category {label}: {count} sequences')
-            # 建立一个字典，用于保存聚类以后每一类的变量index
-            self.label_dict = {}
-            for label in np.unique(labels):
-                if label not in self.label_dict:
-                    self.label_dict[label] = list(np.where(labels == label)[0])
-            # if self.data_path=='ETTh2.csv':
-            #     labels = [0, 1]
-            #     self.label_dict = {0: [2, 4, 5, 6], 1: [0, 1, 3]}
-            # if self.data_path=='ETTh1.csv':
-            #     labels = [0, 1, 2]
-            #     self.label_dict = {0: [0, 2], 1: [6, 5, 4], 2: [1, 3]}
-            self.sra_dict = {}
-            for i in np.unique(labels):
-                if len(self.label_dict[i]) > 2:
-                    # 生成一个布尔掩码矩阵，掩盖对角元素
-                    corr = stats.spearmanr(train_data_std[:, self.label_dict[i]])[0]
-                    mask = ~np.eye(corr.shape[0], dtype=bool)
-                    # 提取非对角元素
-                    non_diagonal_elements = corr[mask]
-                    self.sra_dict[i] = np.mean(np.abs(non_diagonal_elements))
-                    # print(f"第{i}类：", np.mean(np.abs(non_diagonal_elements)), np.min(np.abs(non_diagonal_elements)),
-                    #       np.max(np.abs(non_diagonal_elements)), train_data.columns[self.label_dict[i]])
-                elif len(self.label_dict[i]) == 2:
-                    corr = stats.spearmanr(train_data_std[:, self.label_dict[i]])[0]
-                    self.sra_dict[i] = corr
-                    # print(f"第{i}类：", corr, train_data.columns[self.label_dict[i]])
-                else:
-                    self.sra_dict[i] = 0
-                    # print(f"第{i}类只有1个序列: {train_data.columns[self.label_dict[i]]}")
-                if self.flag == 'train':
-                    print(f'第{i}类相关系数绝对值的均值：{np.round(self.sra_dict[i], 4)}')
+            train_data = df_data[border1s[0]:border2s[0]]
+            ###### catch22 to extract features for clustering ######
+            if self.use_catch22==1:
+                data2 = get_catch22_data(train_data)
+                scaler2 = StandardScaler()
+                data2 = scaler2.fit_transform(data2)  # 把提取的22个特征进行标准化
+            else:
+                data2 = data[border1s[0]:border2s[0]]
+                # ################# 序列分解 只对季节项聚类 ###################
+                # _, D = data2.shape
+                # tmp = torch.Tensor(data2).reshape((1, -1, D))
+                # decomp_module = series_decomp(1001)
+                # season, trend = decomp_module(tmp)
+                # season = season.numpy().reshape(-1, D)
+                # print('季节项', season.shape)
+                # ########################################################
+            # self.n_clusters = find_best_k(data2, self.flag, random_state=self.cluster_random_state)
+            # # 对数据进行聚类
+            # kmeans = KMeans(n_clusters=self.n_clusters, n_init=20, random_state=self.cluster_random_state)
+            # kmeans.fit(data2.T)
+            # # 获取类中心和每个样本的聚类标签
+            # cluster_centroids = kmeans.cluster_centers_
+            # labels = kmeans.labels_
+            # # 建立2个字典，一个用于保存聚类以后每一类的变量index， 另一个用于保存每一类的类内平均相关系数，用于后续判断使用CD还是CI模型
+            # self.label_dict, self.sra_dict = get_label_sra_dict(labels, data2, self.flag)
+            # if self.flag=='train':
+            #     print(f"\n>>>>>>>>>>>>Before ReClustering: {len(self.label_dict.keys())} clusters in total.")
+            #     for key, value in self.label_dict.items():
+            #         print(f"  Category {key}: {len(value)} sequences, mean(corr)={np.round(self.sra_dict[key], 4):.4f}, "
+            #               f"channels in this cluster: {value}")
+            # _, _, self.label_dict, self.sra_dict = recluster(data2, labels, cluster_centroids,
+            #                                                  self.label_dict, self.sra_dict,
+            #                                                  flag=self.flag, threshold=self.corr_threshold)
+            _, self.label_dict, self.sra_dict = correlation_group_2class(data2, self.corr_threshold)
 
         df_stamp = df_raw[['date']][border1:border2]
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
@@ -161,8 +157,8 @@ class Dataset_ETT_hour(Dataset):
 
 
 class Dataset_ETT_minute(Dataset):
-    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=42, is_cluster=0,
-                 features='S', data_path='ETTm1.csv', use_catch22=False,
+    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=2024, is_cluster=0,
+                 features='S', data_path='ETTm1.csv', use_catch22=False, corr_threshold=0.8,
                  target='OT', scale=True, timeenc=0, freq='t'):
         # size [seq_len, label_len, pred_len]
         # info
@@ -189,6 +185,8 @@ class Dataset_ETT_minute(Dataset):
         self.timeenc = timeenc
         self.freq = freq
         self.flag = flag
+        self.use_catch22 = use_catch22
+        self.corr_threshold = corr_threshold
 
         self.root_path = root_path
         self.data_path = data_path
@@ -232,44 +230,32 @@ class Dataset_ETT_minute(Dataset):
             data_stamp = data_stamp.transpose(1, 0)
 
         if self.is_cluster:
-            train_data_std = data[border1s[0]:border2s[0]]
+            train_data = data[border1s[0]:border2s[0]]
+            ###### catch22 to extract features for clustering ######
+            if self.use_catch22==1:
+                data2 = get_catch22_data(train_data)
+                scaler2 = StandardScaler()
+                data2 = scaler2.fit_transform(data2)  # 把提取的22个特征进行标准化
+            else:
+                data2 = data[border1s[0]:border2s[0]]
+            ########################################################
+            self.n_clusters = find_best_k(data2, self.flag, random_state=self.cluster_random_state)
             # 对数据进行聚类
-            kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
-            kmeans.fit(train_data_std.T)
-            # 获取每个样本的聚类标签
+            kmeans = KMeans(n_clusters=self.n_clusters, n_init=20, random_state=self.cluster_random_state)
+            kmeans.fit(data2.T)
+            # 获取类中心和每个样本的聚类标签
+            cluster_centroids = kmeans.cluster_centers_
             labels = kmeans.labels_
-            # 计算每个类别的数量
-            label_counts = np.bincount(np.int64(labels))
-            # 打印每个类别的数量
+            # 建立2个字典，一个用于保存聚类以后每一类的变量index， 另一个用于保存每一类的类内平均相关系数，用于后续判断使用CD还是CI模型
+            self.label_dict, self.sra_dict = get_label_sra_dict(labels, data2, self.flag)
             if self.flag=='train':
-                print(f'Clustering Result:')
-                for label, count in enumerate(label_counts):
-                    print(f'    Category {label}: {count} sequences')
-            # 建立一个字典，用于保存聚类以后每一类的变量index
-            self.label_dict = {}
-            for label in np.unique(labels):
-                if label not in self.label_dict:
-                    self.label_dict[label] = list(np.where(labels == label)[0])
-            self.sra_dict = {}
-            for i in np.unique(labels):
-                if len(self.label_dict[i]) > 2:
-                    # 生成一个布尔掩码矩阵，掩盖对角元素
-                    corr = stats.spearmanr(train_data_std[:, self.label_dict[i]])[0]
-                    mask = ~np.eye(corr.shape[0], dtype=bool)
-                    # 提取非对角元素
-                    non_diagonal_elements = corr[mask]
-                    self.sra_dict[i] = np.mean(np.abs(non_diagonal_elements))
-                    # print(f"第{i}类：", np.mean(np.abs(non_diagonal_elements)), np.min(np.abs(non_diagonal_elements)),
-                    #       np.max(np.abs(non_diagonal_elements)), train_data.columns[self.label_dict[i]])
-                elif len(self.label_dict[i]) == 2:
-                    corr = stats.spearmanr(train_data_std[:, self.label_dict[i]])[0]
-                    self.sra_dict[i] = corr
-                    # print(f"第{i}类：", corr, train_data.columns[self.label_dict[i]])
-                else:
-                    self.sra_dict[i] = 0
-                    # print(f"第{i}类只有1个序列: {train_data.columns[self.label_dict[i]]}")
-                if self.flag == 'train':
-                    print(f'第{i}类相关系数绝对值的均值：{np.round(self.sra_dict[i], 4)}')
+                print(f"\n>>>>>>>>>>>>Before ReClustering: {len(self.label_dict.keys())} clusters in total.")
+                for key, value in self.label_dict.items():
+                    print(f"  Category {key}: {len(value)} sequences, mean(corr)={np.round(self.sra_dict[key], 4):.4f}, "
+                          f"channels in this cluster: {value}")
+            _, _, self.label_dict, self.sra_dict = recluster(data2, labels, cluster_centroids,
+                                                             self.label_dict, self.sra_dict,
+                                                             flag=self.flag, threshold=self.corr_threshold)
 
         self.data_x = data[border1:border2]
         self.data_y = data[border1:border2]
@@ -296,8 +282,8 @@ class Dataset_ETT_minute(Dataset):
 
 
 class Dataset_Custom(Dataset):
-    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=42, is_cluster=0,
-                 features='S', data_path='ETTh1.csv', use_catch22=False,
+    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=2024, is_cluster=0,
+                 features='S', data_path='ETTh1.csv', use_catch22=False, corr_threshold=0.8,
                  target='OT', scale=True, timeenc=0, freq='h'):
         # size [seq_len, label_len, pred_len]
         # info
@@ -325,6 +311,7 @@ class Dataset_Custom(Dataset):
         self.freq = freq
         self.flag = flag
         self.use_catch22 = use_catch22
+        self.corr_threshold = corr_threshold
 
         self.root_path = root_path
         self.data_path = data_path
@@ -373,7 +360,6 @@ class Dataset_Custom(Dataset):
             data = df_data.values
 
         if self.is_cluster:
-            kmeans = KMeans(n_clusters=self.n_clusters, random_state=42)  # 假设我们要分成3个簇
             if self.data_path == 'weather.csv':
                 print('weather数据处理异常值：修正异常值后重新聚类，但不改变原始数据的标准化')
                 train_data.loc[train_data['OT'] == -9999, 'OT'] = 417 #替换成均值
@@ -385,59 +371,30 @@ class Dataset_Custom(Dataset):
                     data2 = scaler2.fit_transform(train_data.values)
             else:
                 data2 = data[border1s[0]:border2s[0]]
-            ###### catch22 to extract features for clustering ######
-            if self.use_catch22==1:
-                import pycatch22
-                tmp = pycatch22.catch22_all(train_data.iloc[:, 0].values)
-                data2 = pd.DataFrame(np.array(tmp['values']).reshape(1, -1), columns=tmp['names'])
-                for i in range(1, train_data.shape[1]):
-                    tmp = pycatch22.catch22_all(train_data.iloc[:, i].values)
-                    new_line = pd.DataFrame(np.array(tmp['values']).reshape(1, -1), columns=tmp['names'])
-                    data2 = pd.concat([data2, new_line])
-                data2 = data2.values.T
-                scaler3 = StandardScaler()
-                data2 = scaler3.fit_transform(data2)  # 把提取的22个特征进行标准化
-            ########################################################
-
-            # 对数据进行聚类
-            kmeans.fit(data2.T)
-            # 获取聚类中心
-            cluster_centroids = kmeans.cluster_centers_
-            # 获取每个样本的聚类标签
-            labels = kmeans.labels_
-            # 计算每个类别的数量
-            label_counts = np.bincount(np.int64(labels))
-            # 打印每个类别的数量
-            if self.flag=='train':
-                print(f'Clustering Result:')
-                for label, count in enumerate(label_counts):
-                    print(f'    Category {label}: {count} sequences')
-            # 建立一个字典，用于保存聚类以后每一类的变量index
-            self.label_dict = {}
-            for label in np.unique(labels):
-                if label not in self.label_dict:
-                    self.label_dict[label] = list(np.where(labels == label)[0])
-                # print(df_raw.iloc[:, np.where(labels == label)[0]])
-            self.sra_dict = {}
-            for i in np.unique(labels):
-                if len(self.label_dict[i]) > 2:
-                    # 生成一个布尔掩码矩阵，掩盖对角元素
-                    corr = stats.spearmanr(data2[:, self.label_dict[i]])[0]
-                    mask = ~np.eye(corr.shape[0], dtype=bool)
-                    # 提取非对角元素
-                    non_diagonal_elements = corr[mask]
-                    self.sra_dict[i] = np.mean(np.abs(non_diagonal_elements))
-                    # print(f"第{i}类：", np.mean(np.abs(non_diagonal_elements)), np.min(np.abs(non_diagonal_elements)),
-                    #       np.max(np.abs(non_diagonal_elements)), train_data.columns[self.label_dict[i]])
-                elif len(self.label_dict[i]) == 2:
-                    corr = stats.spearmanr(data2[:, self.label_dict[i]])[0]
-                    self.sra_dict[i] = corr
-                    # print(f"第{i}类：", corr, train_data.columns[self.label_dict[i]])
-                else:
-                    self.sra_dict[i] = 0
-                    # print(f"第{i}类只有1个序列: {train_data.columns[self.label_dict[i]]}")
-                if self.flag == 'train':
-                    print(f'第{i}类相关系数绝对值的均值：{np.round(self.sra_dict[i], 4)}')
+            # ###### catch22 to extract features for clustering ######
+            # if self.use_catch22==1:
+            #     data2 = get_catch22_data(train_data)
+            #     scaler3 = StandardScaler()
+            #     data2 = scaler3.fit_transform(data2)  # 把提取的22个特征进行标准化
+            # ########################################################
+            # self.n_clusters = find_best_k(data2, self.flag, random_state=self.cluster_random_state)
+            # # 对数据进行聚类
+            # kmeans = KMeans(n_clusters=self.n_clusters, n_init=20, random_state=self.cluster_random_state)
+            # kmeans.fit(data2.T)
+            # # 获取类中心和每个样本的聚类标签
+            # cluster_centroids = kmeans.cluster_centers_
+            # labels = kmeans.labels_
+            # # 建立2个字典，一个用于保存聚类以后每一类的变量index， 另一个用于保存每一类的类内平均相关系数，用于后续判断使用CD还是CI模型
+            # self.label_dict, self.sra_dict = get_label_sra_dict(labels, data2, self.flag)
+            # if self.flag=='train':
+            #     print(f"\n>>>>>>>>>>>>Before ReClustering: {len(self.label_dict.keys())} clusters in total.")
+            #     for key, value in self.label_dict.items():
+            #         print(f"  Category {key}: {len(value)} sequences, mean(corr)={np.round(self.sra_dict[key], 4):.4f}, "
+            #               f"channels in this cluster: {value}")
+            # _, _, self.label_dict, self.sra_dict = recluster(data2, labels, cluster_centroids,
+            #                                                  self.label_dict, self.sra_dict,
+            #                                                  flag=self.flag, threshold=self.corr_threshold)
+            _, self.label_dict, self.sra_dict = correlation_group(data2, self.corr_threshold)
 
         df_stamp = df_raw[['date']][border1:border2]
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
@@ -476,8 +433,8 @@ class Dataset_Custom(Dataset):
     
 
 class Dataset_PEMS(Dataset):
-    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=42, is_cluster=0,
-                 features='S', data_path='ETTh1.csv', use_catch22=False,
+    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=2024, is_cluster=0,
+                 features='S', data_path='ETTh1.csv', use_catch22=False, corr_threshold=0.8,
                  target='OT', scale=True, timeenc=0, freq='h'):
         # size [seq_len, label_len, pred_len]
         # info
@@ -499,6 +456,7 @@ class Dataset_PEMS(Dataset):
         self.timeenc = timeenc
         self.freq = freq
         self.flag = flag
+        self.corr_threshold = corr_threshold
 
         self.root_path = root_path
         self.data_path = data_path
@@ -524,44 +482,45 @@ class Dataset_PEMS(Dataset):
             train_data_std = self.scaler.transform(train_data)
 
         if self.is_cluster:
-            # 对数据进行聚类
-            kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
-            kmeans.fit(train_data_std.T)
-            # 获取每个样本的聚类标签
-            labels = kmeans.labels_
-            # 计算每个类别的数量
-            label_counts = np.bincount(np.int64(labels))
-            # 打印每个类别的数量
-            if self.flag=='train':
-                print(f'Clustering Result:')
-                for label, count in enumerate(label_counts):
-                    print(f'    Category {label}: {count} sequences')
-            # 建立一个字典，用于保存聚类以后每一类的变量index
-            self.label_dict = {}
-            for label in np.unique(labels):
-                if label not in self.label_dict:
-                    self.label_dict[label] = list(np.where(labels == label)[0])
-                # print(data[:, np.where(labels == label)[0]])
-            self.sra_dict = {}
-            for i in np.unique(labels):
-                if len(self.label_dict[i]) > 2:
-                    # 生成一个布尔掩码矩阵，掩盖对角元素
-                    corr = stats.spearmanr(train_data_std[:, self.label_dict[i]])[0]
-                    mask = ~np.eye(corr.shape[0], dtype=bool)
-                    # 提取非对角元素
-                    non_diagonal_elements = corr[mask]
-                    self.sra_dict[i] = np.mean(np.abs(non_diagonal_elements))
-                    # print(f"第{i}类：", np.mean(np.abs(non_diagonal_elements)), np.min(np.abs(non_diagonal_elements)),
-                    #       np.max(np.abs(non_diagonal_elements)), train_data.columns[self.label_dict[i]])
-                elif len(self.label_dict[i]) == 2:
-                    corr = stats.spearmanr(train_data_std[:, self.label_dict[i]])[0]
-                    self.sra_dict[i] = corr
-                    # print(f"第{i}类：", corr, train_data.columns[self.label_dict[i]])
-                else:
-                    self.sra_dict[i] = 0
-                    # print(f"第{i}类只有1个序列: {train_data.columns[self.label_dict[i]]}")
-                if self.flag == 'train':
-                    print(f'第{i}类相关系数绝对值的均值：{np.round(self.sra_dict[i], 4)}')
+            # # 对数据进行聚类
+            # kmeans = KMeans(n_clusters=self.n_clusters, n_init=20, random_state=self.cluster_random_state)
+            # kmeans.fit(train_data_std.T)
+            # # 获取每个样本的聚类标签
+            # labels = kmeans.labels_
+            # # 计算每个类别的数量
+            # label_counts = np.bincount(np.int64(labels))
+            # # 打印每个类别的数量
+            # if self.flag=='train':
+            #     print(f'Clustering Result:')
+            #     for label, count in enumerate(label_counts):
+            #         print(f'    Category {label}: {count} sequences')
+            # # 建立一个字典，用于保存聚类以后每一类的变量index
+            # self.label_dict = {}
+            # for label in np.unique(labels):
+            #     if label not in self.label_dict:
+            #         self.label_dict[label] = list(np.where(labels == label)[0])
+            #     # print(data[:, np.where(labels == label)[0]])
+            # self.sra_dict = {}
+            # for i in np.unique(labels):
+            #     if len(self.label_dict[i]) > 2:
+            #         # 生成一个布尔掩码矩阵，掩盖对角元素
+            #         corr = np.corrcoef(train_data_std[:, self.label_dict[i]].T)
+            #         mask = ~np.eye(corr.shape[0], dtype=bool)
+            #         # 提取非对角元素
+            #         non_diagonal_elements = corr[mask]
+            #         self.sra_dict[i] = np.mean(np.abs(non_diagonal_elements))
+            #         # print(f"第{i}类：", np.mean(np.abs(non_diagonal_elements)), np.min(np.abs(non_diagonal_elements)),
+            #         #       np.max(np.abs(non_diagonal_elements)), train_data.columns[self.label_dict[i]])
+            #     elif len(self.label_dict[i]) == 2:
+            #         corr = np.corrcoef(train_data_std[:, self.label_dict[i]].T)
+            #         self.sra_dict[i] = corr
+            #         # print(f"第{i}类：", corr, train_data.columns[self.label_dict[i]])
+            #     else:
+            #         self.sra_dict[i] = 0
+            #         # print(f"第{i}类只有1个序列: {train_data.columns[self.label_dict[i]]}")
+            #     if self.flag == 'train':
+            #         print(f'第{i}类相关系数绝对值的均值：{np.round(self.sra_dict[i], 4)}')
+            _, self.label_dict, self.sra_dict = correlation_group_2class(data, self.corr_threshold)
 
         df = pd.DataFrame(data)
         df = df.fillna(method='ffill', limit=len(df)).fillna(method='bfill', limit=len(df)).values
@@ -590,7 +549,7 @@ class Dataset_PEMS(Dataset):
 
 
 class Dataset_Solar(Dataset):
-    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=42, is_cluster=0,
+    def __init__(self, root_path, flag='train', size=None, n_clusters=3, cluster_random_state=2024, is_cluster=0,
                  features='S', data_path='ETTh1.csv',
                  target='OT', scale=True, timeenc=0, freq='h'):
         # size [seq_len, label_len, pred_len]
@@ -649,7 +608,7 @@ class Dataset_Solar(Dataset):
 
         if self.is_cluster:
             # 对数据进行聚类
-            kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
+            kmeans = KMeans(n_clusters=self.n_clusters, n_init=20, random_state=self.cluster_random_state)
             kmeans.fit(data.T)
             # 获取每个样本的聚类标签
             labels = kmeans.labels_
@@ -800,5 +759,5 @@ if __name__=='__main__':
     #                             features='M', is_cluster=True, size=[96, 48, 24], n_clusters=5, timeenc=0)
     # data_set = Dataset_PEMS(root_path='../dataset/PEMS/', data_path='PEMS03.npz', flag='train',
     #                             features='M', is_cluster=True, size=[96, 48, 24], n_clusters=5, timeenc=0)
-    data_set = Dataset_Solar(root_path='../dataset/', data_path='solar_AL.txt', flag='train',
+    data_set = Dataset_Solar(root_path='../dataset/', data_path='Solar/solar_AL.txt', flag='train',
                                 features='M', is_cluster=True, size=[96, 48, 24], n_clusters=5, timeenc=0)
