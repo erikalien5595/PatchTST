@@ -1,10 +1,25 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import matplotlib
+matplotlib.use('Agg')  # 确保整个程序使用无界面（non-interactive）的 Agg 后端，避免因 Tkinter 相关的 GUI 清理而导致错误
 import matplotlib.pyplot as plt
 import time
+import socket
 
-plt.switch_backend('agg')
+
+def get_internal_ip():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # Use Google's public DNS server to determine internal IP
+        # The IP address 8.8.8.8 is used here as a placeholder and does not need to be reachable
+        sock.connect(('8.8.8.8', 80))
+        internal_ip = sock.getsockname()[0]
+    except Exception:
+        internal_ip = '127.0.0.1'
+    finally:
+        sock.close()
+    return internal_ip
 
 
 def adjust_learning_rate(optimizer, scheduler, epoch, args, printout=True):
@@ -47,8 +62,9 @@ class EarlyStopping:
         self.early_stop = False
         self.val_loss_min = np.Inf
         self.delta = delta
+        self.update_model_flag = False
 
-    def __call__(self, val_loss, model, path, is_cluster=0):
+    def __call__(self, val_loss, model, path, early_stop_epoch, is_cluster=0):
         score = -val_loss
         if self.best_score is None:
             self.best_score = score
@@ -57,11 +73,14 @@ class EarlyStopping:
                     self.save_checkpoint(val_loss, model, path, is_cluster, model_index)
             else:
                 self.save_checkpoint(val_loss, model, path)
+            self.early_stop_epoch = early_stop_epoch
+            self.update_model_flag = True
         elif score < self.best_score + self.delta:
             self.counter += 1
             print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
                 self.early_stop = True
+            self.update_model_flag = False
         else:
             self.best_score = score
             if is_cluster:
@@ -69,7 +88,9 @@ class EarlyStopping:
                     self.save_checkpoint(val_loss, model, path, is_cluster, model_index)
             else:
                 self.save_checkpoint(val_loss, model, path)
+            self.early_stop_epoch = early_stop_epoch
             self.counter = 0
+            self.update_model_flag = True
 
     def save_checkpoint(self, val_loss, model, path, is_cluster=0, model_index=0):
         if is_cluster:
@@ -180,3 +201,19 @@ class RevIN(nn.Module):
         x = x * self.stdev
         x = x + self.mean
         return x
+
+
+def plot_loss_curve(train_loss, valid_loss, test_loss, early_stop_epoch, name='loss_curve.pdf'):
+    # 绘制损失曲线
+    plt.figure(figsize=(10, 6))
+    plt.plot(np.arange(len(train_loss))+1, train_loss, label='Train Loss')
+    plt.plot(np.arange(len(train_loss))+1, valid_loss, label='Validation Loss')
+    plt.plot(np.arange(len(train_loss))+1, test_loss, label='Test Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Train and Validation Loss Over Epochs')
+    plt.legend()
+    max_th = np.max(np.array([train_loss, valid_loss, test_loss]))
+    min_th = np.min(np.array([train_loss, valid_loss, test_loss]))
+    plt.vlines(early_stop_epoch, min_th*0.9, max_th*1.1, linestyles='dashed')
+    plt.savefig(name, bbox_inches='tight')
