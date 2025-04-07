@@ -17,7 +17,7 @@ model_id_name=ETTm1 # 如果是聚类后的模型，model_id_name后面再加上
 data_name=ETTm1
 
 random_seed=2024
-n_clusters=4
+n_clusters=5
 for pred_len in 96 192 336 720
 do
     python -u run_longExp.py \
@@ -47,8 +47,8 @@ do
       --patch_len 16 \
       --stride 8 \
       --des 'Cluster'$n_clusters'Flip' \
-      --train_epochs 10 \
-      --patience 3\
+      --train_epochs 30 \
+      --patience 5 \
       --lradj '5'\
       --pct_start 0.2\
       --gpu ${gpu} \

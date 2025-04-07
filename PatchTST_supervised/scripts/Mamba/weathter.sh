@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-gpu=1
+gpu=3
 
 if [ ! -d "./logs" ]; then
     mkdir ./logs
@@ -11,7 +11,7 @@ fi
 seq_len=96
 model_name=Mamba
 
-root_path_name=./dataset/
+root_path_name=./dataset/weather/
 data_path_name=weather.csv
 model_id_name=Weather # 如果是聚类后的模型，model_id_name后面再加上_cluster
 data_name=custom

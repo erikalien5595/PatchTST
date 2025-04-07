@@ -11,7 +11,7 @@ fi
 seq_len=96
 model_name=Mamba
 
-root_path_name=./dataset/
+root_path_name=./dataset/electricity/
 data_path_name=electricity.csv
 model_id_name=Electricity # 如果是聚类后的模型，model_id_name后面再加上_cluster
 data_name=custom

@@ -46,9 +46,9 @@ do
       --patch_len 16 \
       --stride 8 \
       --des 'Flip' \
-      --train_epochs 10 \
-      --patience 10\
-      --lradj '5'\
+      --train_epochs 30 \
+      --patience 5\
+      --lradj 'type3'\
       --pct_start 0.2\
       --gpu ${gpu} \
       --itr 1 --batch_size 256 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log

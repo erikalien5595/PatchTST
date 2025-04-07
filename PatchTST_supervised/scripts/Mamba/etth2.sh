@@ -34,11 +34,11 @@ do
       --seq_len $seq_len \
       --pred_len $pred_len \
       --enc_in 7 \
-      --e_layers 2 \
+      --e_layers 3 \
       --n_heads 16 \
-      --d_model 256 \
-      --d_state 2 \
-      --d_ff 256 \
+      --d_model 512 \
+      --d_state 16 \
+      --d_ff 512 \
       --is_flip 1 \
       --dropout 0.1\
       --fc_dropout 0.1 \
@@ -46,10 +46,10 @@ do
       --patch_len 16 \
       --stride 8 \
       --des 'Flip' \
-      --train_epochs 10 \
-      --patience 3\
-      --lradj '5'\
+      --train_epochs 30 \
+      --patience 5\
+      --lradj 'type3'\
       --pct_start 0.2\
       --gpu ${gpu} \
-      --itr 1 --batch_size 32 --learning_rate 0.00004 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
+      --itr 1 --batch_size 256 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
 done

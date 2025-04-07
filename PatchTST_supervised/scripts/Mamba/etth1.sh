@@ -29,7 +29,7 @@ do
       --data $data_name \
       --features M \
       --is_cluster 0 \
-      --ch_ind 1 \
+      --ch_ind 0 \
       --n_clusters 5 \
       --revin 1 \
       --seq_len $seq_len \
@@ -46,10 +46,10 @@ do
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \
-      --des 'FlipChannelIndependence' \
-      --train_epochs 20 \
-      --patience 10\
-      --lradj '5'\
+      --des 'Flip' \
+      --train_epochs 30 \
+      --patience 5\
+      --lradj 'type3'\
       --pct_start 0.2\
       --gpu ${gpu} \
       --itr 1 --batch_size 256 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log

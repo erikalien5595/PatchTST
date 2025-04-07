@@ -42,17 +42,17 @@ do
         --d_state 16 \
         --d_ff 512 \
         --is_flip 1 \
-        --dropout 0.3\
+        --dropout 0.1\
         --fc_dropout 0.1 \
         --head_dropout 0 \
         --patch_len 16 \
         --stride 8 \
         --des 'Cluster'$n_clusters'Flip' \
-        --train_epochs 10 \
-        --patience 3\
+        --train_epochs 30 \
+        --patience 5\
         --lradj '5'\
         --pct_start 0.2\
         --gpu ${gpu} \
-        --itr 1 --batch_size 256 --learning_rate 0.0005 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
+        --itr 1 --batch_size 256 --learning_rate 0.00004 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
   done
 done
