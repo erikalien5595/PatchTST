@@ -97,9 +97,9 @@ class Dataset_ETT_hour(Dataset):
             for label in np.unique(labels):
                 if label not in self.label_dict:
                     self.label_dict[label] = list(np.where(labels == label)[0])
-            # if self.data_path=='ETTh2.csv':
-            #     labels = [0, 1]
-            #     self.label_dict = {0: [2, 4, 5, 6], 1: [0, 1, 3]}
+            if self.data_path=='ETTh2.csv':
+                labels = [0, 1]
+                self.label_dict = {0: [2, 4, 5, 6], 1: [0, 1, 3]}
             # if self.data_path=='ETTh1.csv':
             #     labels = [0, 1, 2]
             #     self.label_dict = {0: [0, 2], 1: [6, 5, 4], 2: [1, 3]}

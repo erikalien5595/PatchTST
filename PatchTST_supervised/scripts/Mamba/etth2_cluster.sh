@@ -46,7 +46,7 @@ python -u run_longExp.py \
   --head_dropout 0 \
   --patch_len 16 \
   --stride 8 \
-  --des 'excel表中非手工指定2类' \
+  --des '复现论文' \
   --use_wandb True \
   --train_epochs 30 \
   --patience 5 \
