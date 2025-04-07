@@ -17,8 +17,8 @@ class Model(nn.Module):
                 self.revin_layer = RevIN(self.configs.enc_in_cluster)  # 聚类后的cluster内的channel数
             else:
                 self.revin_layer = RevIN(self.configs.enc_in)  # 原始的channel数
-        self.ch_ind = configs.ch_ind
-        print(f'self.ch_ind={self.ch_ind}')
+        self.ch_ind = 0  # configs.ch_ind
+        print(f'类内self.ch_ind={self.ch_ind}')
         is_flip = 0 if self.ch_ind==1 else 1
         self.mamba1 = Mamba(d_model=configs.d_model, d_state=configs.d_state, d_conv=configs.dconv,
                             expand=configs.e_fact)
