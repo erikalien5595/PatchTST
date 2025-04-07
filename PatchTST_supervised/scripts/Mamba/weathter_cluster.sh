@@ -36,7 +36,7 @@ python -u run_longExp.py \
   --seq_len $seq_len \
   --pred_len $pred_len \
   --enc_in 21 \
-  --e_layers 2 \
+  --e_layers 3 \
   --n_heads 16 \
   --d_model 512 \
   --d_state 16 \
@@ -51,7 +51,7 @@ python -u run_longExp.py \
   --use_wandb True \
   --train_epochs 20 \
   --patience 10\
-  --lradj 'type3'\
+  --lradj '5'\
   --pct_start 0.2\
   --gpu ${gpu} \
   --itr 1 --batch_size 512 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
