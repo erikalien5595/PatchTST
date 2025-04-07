@@ -44,7 +44,8 @@ do
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \
-      --des 'Flip' \
+      --des '复现论文' \
+      --use_wandb True \
       --train_epochs 10 \
       --patience 5\
       --lradj '5'\

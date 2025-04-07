@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-gpu=3
+gpu=1
 
 if [ ! -d "./logs" ]; then
     mkdir ./logs
@@ -44,7 +44,8 @@ do
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \
-      --des 'FlipChannelMixing' \
+      --des '复现论文' \
+      --use_wandb True \
       --train_epochs 20 \
       --patience 10\
       --lradj '5'\
