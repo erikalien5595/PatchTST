@@ -1,9 +1,10 @@
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
 from models import Informer, Autoformer, Transformer, DLinear, Linear, NLinear, PatchTST, Mamba
-from utils.tools import EarlyStopping, adjust_learning_rate, visual, test_params_flop
+from utils.tools import EarlyStopping, adjust_learning_rate, visual, test_params_flop, get_internal_ip, plot_loss_curve
 from utils.metrics import metric
 
+import wandb
 import numpy as np
 import torch
 import torch.nn as nn
@@ -18,15 +19,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 warnings.filterwarnings('ignore')
+home_dir = os.environ['HOME']
 
 class Exp_Main(Exp_Basic):
     def __init__(self, args):
         super(Exp_Main, self).__init__(args)
+        if "sjfx006" in home_dir:
+            self.shared_directory = './'
+        else:
+            self.shared_directory = f'/nfsdata/sjfx016/{get_internal_ip()[-2:]}/OurProjects/CADMamba_Paper_Reproduce/'
+        self.args.checkpoints = f'{self.shared_directory}checkpoints/'
         if args.is_cluster:
             self.model_list = self._build_model_list()
 
     def _build_model_list(self):
         model_list = []
+        total_params = 0
         train_data, train_loader = self._get_data(flag='train')
         for i in train_data.label_dict:
             self.args.enc_in_cluster = len(train_data.label_dict[i])
@@ -34,6 +42,9 @@ class Exp_Main(Exp_Basic):
             print(f'model {i},  ch_ind={self.args.ch_ind}')
             model = Mamba.Model(self.args).float().to(self.device)
             model_list.append(model)
+            total_params += sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"总参数量: {total_params}")
+
         return model_list
 
     def _build_model(self):
@@ -168,6 +179,8 @@ class Exp_Main(Exp_Basic):
                                             pct_start = self.args.pct_start,
                                             epochs = self.args.train_epochs,
                                             max_lr = self.args.learning_rate)
+        train_loss_list, vali_loss_list, test_loss_list = [], [], []
+        train_loss_best_model, vali_loss_best_model, test_loss_best_model = 0, 0, 0
 
         for epoch in range(self.args.train_epochs):
             iter_count = 0
@@ -286,13 +299,30 @@ class Exp_Main(Exp_Basic):
             train_loss = np.average(train_loss)
             vali_loss = self.vali(vali_data, vali_loader, criterion)
             test_loss = self.vali(test_data, test_loader, criterion)
+            train_loss_list.append(train_loss)
+            vali_loss_list.append(vali_loss)
+            test_loss_list.append(test_loss)
+
+            if self.args.use_wandb:
+                wandb.log({"epoch": epoch+1, "train_loss": train_loss, "vali_loss": vali_loss, "test_loss": test_loss})
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss, test_loss))
             if self.args.is_cluster:
-                early_stopping(vali_loss, self.model_list, path, self.args.is_cluster)
+                early_stopping(vali_loss, self.model_list, path,  epoch+1, self.args.is_cluster)
             else:
-                early_stopping(vali_loss, self.model, path)
+                early_stopping(vali_loss, self.model, path, epoch+1)
+
+            if early_stopping.update_model_flag:
+                train_loss_best_model = train_loss
+                vali_loss_best_model = vali_loss
+                test_loss_best_model = test_loss
+            if self.args.use_wandb:
+                wandb.log({"epoch": epoch + 1,
+                           "train_loss_best_model": train_loss_best_model,
+                           "vali_loss_best_model": vali_loss_best_model,
+                           "test_loss_best_model": test_loss_best_model})
+
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
@@ -301,7 +331,15 @@ class Exp_Main(Exp_Basic):
                 adjust_learning_rate(model_optim, scheduler, epoch + 1, self.args)
             else:
                 print('Updating learning rate to {}'.format(scheduler.get_last_lr()[0]))
+        print(f'The best model is saved from Epoch {early_stopping.early_stop_epoch}!')
+        if self.args.use_wandb:
+            wandb.log({"early_stop_epoch": early_stopping.early_stop_epoch})
 
+        folder_path = f'{self.shared_directory}test_results/' + setting + '/'
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path)
+        plot_loss_curve(train_loss_list, vali_loss_list, test_loss_list, early_stopping.early_stop_epoch,
+                        name=folder_path+'loss_curve.pdf')
         if self.args.is_cluster:
             for model_index in train_data.label_dict:
                 best_model_path = path + '/' + f'checkpoint_cluster_{model_index}.pth'
@@ -328,7 +366,7 @@ class Exp_Main(Exp_Basic):
         preds = []
         trues = []
         inputx = []
-        folder_path = './test_results/' + setting + '/'
+        folder_path = f'{self.shared_directory}test_results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
@@ -413,13 +451,21 @@ class Exp_Main(Exp_Basic):
         inputx = inputx.reshape(-1, inputx.shape[-2], inputx.shape[-1])
 
         # result save
-        folder_path = './results/' + setting + '/'
+        folder_path = f'{self.shared_directory}results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
         mae, mse, rmse, mape, mspe, rse, corr = metric(preds, trues)
-        print('mse:{}, mae:{}, rse:{}'.format(mse, mae, rse))
-        f = open(f"result_{self.args.data_path[:-4]}_iscluster_{self.args.is_cluster}.txt", 'a')
+        print('mse:{}, mae:{}, rmse:{}, mspe:{}, mape:{}'.format(mse, mae, rmse, mspe, mape))
+        if self.args.use_wandb:
+            wandb.log({"test_mse": mse,
+                       "test_mae": mae,
+                       "rmse": rmse,
+                       "rse": rse,
+                       "test_mspe": mspe,
+                       "test_mape": mape})
+
+        f = open(f"{self.shared_directory}result_{self.args.data_path[:-4]}_iscluster_{self.args.is_cluster}.txt", 'a')
         f.write(setting + "  \n")
         f.write('mse:{}, mae:{}, rse:{}'.format(mse, mae, rse))
         f.write('\n')
@@ -482,7 +528,7 @@ class Exp_Main(Exp_Basic):
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
 
         # result save
-        folder_path = './results/' + setting + '/'
+        folder_path = f'{self.shared_directory}results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 

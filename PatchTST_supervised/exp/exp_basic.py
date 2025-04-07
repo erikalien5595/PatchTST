@@ -9,7 +9,10 @@ class Exp_Basic(object):
         self.device = self._acquire_device()
         if args.is_cluster != 1:  # 不聚类，则只有一个模型，聚类需要初始化K个模型，K为cluster个数，在Exp_Main中实现
             self.model = self._build_model().to(self.device)
-
+            total_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+            print(f"总参数量: {total_params}")
+            # for name, param in self.model.named_parameters():
+            #     print(f"层: {name} | 大小: {param.size()}")
     def _build_model(self):
         raise NotImplementedError
         return None

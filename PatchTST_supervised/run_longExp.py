@@ -4,39 +4,54 @@ import torch
 from exp.exp_main import Exp_Main
 import random
 import numpy as np
+import wandb
+from utils.print_args import print_args
 
 if __name__ == '__main__':
+    torch.multiprocessing.set_sharing_strategy('file_system')
     print('进入run_longExp.py时的卡数：', torch.cuda.device_count())
     parser = argparse.ArgumentParser(description='Autoformer & Transformer family for Time Series Forecasting')
 
-    # random seed
-    parser.add_argument('--random_seed', type=int, default=2021, help='random seed')
-
     # basic config
+    parser.add_argument('--random_seed', type=int, default=2024, help='random seed')
+    parser.add_argument('--task_name', type=str, default='long_term_forecast',
+                        help='task name, options:[long_term_forecast, short_term_forecast, imputation, classification, '
+                             'anomaly_detection]')
     parser.add_argument('--is_training', type=int, required=True, default=1, help='status')
     parser.add_argument('--model_id', type=str, required=True, default='test', help='model id')
     parser.add_argument('--model', type=str, required=True, default='Autoformer',
                         help='model name, options: [Autoformer, Informer, Transformer]')
+    parser.add_argument('--partial_train', action='store_true',
+                        help='whether only use partial covariates for training', default=False)
+    parser.add_argument('--ch_ind', type=int, default=0, help='Channel Independence; True 1 False 0')
 
     # data loader
     parser.add_argument('--data', type=str, required=True, default='ETTm1', help='dataset type')
     parser.add_argument('--root_path', type=str, default='./data/ETT/', help='root path of the data file')
     parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
     parser.add_argument('--features', type=str, default='M',
-                        help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
+                        help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, '
+                             'S:univariate predict univariate, MS:multivariate predict univariate')
     parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
     parser.add_argument('--freq', type=str, default='h',
-                        help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
-    parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
+                        help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, '
+                             'b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min '
+                             'or 3h')
+    parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model '
+                                                                                  'checkpoints')
 
     # forecasting task
     parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
     parser.add_argument('--label_len', type=int, default=48, help='start token length')
     parser.add_argument('--pred_len', type=int, default=96, help='prediction sequence length')
+    parser.add_argument('--inverse', action='store_true', help='inverse output data', default=False)
 
+    # general model parameters
+    parser.add_argument('--revin', type=int, default=1, help='RevIN; True 1 False 0')
+    parser.add_argument('--affine', type=int, default=0, help='RevIN-affine; True 1 False 0')
 
-    # DLinear
-    #parser.add_argument('--individual', action='store_true', default=False, help='DLinear: a linear layer for each variate(channel) individually')
+    # SOFTS
+    parser.add_argument('--d_core', type=int, default=512, help='dimension of core')
 
     # PatchTST
     parser.add_argument('--fc_dropout', type=float, default=0.05, help='fully connected dropout')
@@ -44,8 +59,6 @@ if __name__ == '__main__':
     parser.add_argument('--patch_len', type=int, default=16, help='patch length')
     parser.add_argument('--stride', type=int, default=8, help='stride')
     parser.add_argument('--padding_patch', default='end', help='None: None; end: padding on the end')
-    parser.add_argument('--revin', type=int, default=1, help='RevIN; True 1 False 0')
-    parser.add_argument('--affine', type=int, default=0, help='RevIN-affine; True 1 False 0')
     parser.add_argument('--subtract_last', type=int, default=0, help='0: subtract mean; 1: subtract last')
     parser.add_argument('--decomposition', type=int, default=0, help='decomposition; True 1 False 0')
     parser.add_argument('--kernel_size', type=int, default=25, help='decomposition-kernel')
@@ -57,7 +70,7 @@ if __name__ == '__main__':
                                                                   'positional embedding 2: value embedding + '
                                                                   'temporal embedding 3: value embedding + '
                                                                   'positional embedding 4: value embedding')
-    parser.add_argument('--enc_in', type=int, default=7, help='encoder input size') # DLinear with --individual, use this hyperparameter as the number of channels
+    parser.add_argument('--enc_in', type=int, default=7, help='encoder input size')
     parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
     parser.add_argument('--c_out', type=int, default=7, help='output size')
     parser.add_argument('--d_model', type=int, default=512, help='dimension of model')
@@ -70,55 +83,85 @@ if __name__ == '__main__':
     parser.add_argument('--distil', action='store_false',
                         help='whether to use distilling in encoder, using this argument means not using distilling',
                         default=True)
-    parser.add_argument('--dropout', type=float, default=0.05, help='dropout')
+    parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
     parser.add_argument('--embed', type=str, default='timeF',
                         help='time features encoding, options:[timeF, fixed, learned]')
     parser.add_argument('--activation', type=str, default='gelu', help='activation')
-    parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder')
+    parser.add_argument('--output_attention', action='store_true', help='whether to output attention in '
+                                                                        'ecoder')
     parser.add_argument('--do_predict', action='store_true', help='whether to predict unseen future data')
 
     # Mamba
-    parser.add_argument('--ch_ind', type=int, default=0, help='Channel Independence; True 1 False 0')
-    parser.add_argument('--d_state', type=int, default=256, help='d_state parameter of Mamba')
+    parser.add_argument('--d_state', type=int, default=32, help='d_state parameter of Mamba')
     parser.add_argument('--dconv', type=int, default=2, help='d_conv parameter of Mamba')
     parser.add_argument('--e_fact', type=int, default=1, help='expand factor parameter of Mamba')
     parser.add_argument('--is_flip', type=int, default=1,
                         help='1: consider reversed Mamba for the variables, 0: not consider reversed Mamba')
 
+    # TimeMixer
+    parser.add_argument('--down_sampling_layers', type=int, default=0, help='num of down sampling layers')
+    parser.add_argument('--down_sampling_window', type=int, default=1, help='down sampling window size')
+    parser.add_argument('--down_sampling_method', type=str, default='avg',
+                        help='down sampling method, only support avg, max, conv')
+    parser.add_argument('--decomp_method', type=str, default='moving_avg',
+                        help='method of series decompsition, only support moving_avg or dft_decomp')
+    parser.add_argument('--use_future_temporal_feature', type=int, default=0,
+                        help='whether to use future_temporal_feature; True 1 False 0')
+
     # optimization
     parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
     parser.add_argument('--itr', type=int, default=2, help='experiments times')
-    parser.add_argument('--train_epochs', type=int, default=100, help='train epochs')
-    parser.add_argument('--batch_size', type=int, default=128, help='batch size of train input data')
-    parser.add_argument('--patience', type=int, default=100, help='early stopping patience')
+    parser.add_argument('--train_epochs', type=int, default=30, help='train epochs')
+    parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data')
+    parser.add_argument('--patience', type=int, default=3, help='early stopping patience')
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
     parser.add_argument('--des', type=str, default='test', help='exp description')
-    parser.add_argument('--loss', type=str, default='mse', help='loss function')
+    parser.add_argument('--alpha', type=float, default=0.0, help='loss = alpha * MAE + (1-alpha) * MSE')
     parser.add_argument('--lradj', type=str, default='type3', help='adjust learning rate')
     parser.add_argument('--pct_start', type=float, default=0.3, help='pct_start')
-    parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
+    parser.add_argument('--use_amp', action='store_true', default=False, help='use automatic mixed '
+                                                                              'precision training')
+    parser.add_argument('--use_wandb', type=bool, default=False, help='use wandb')
 
     # GPU
     parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu')
     parser.add_argument('--gpu', type=int, default=0, help='gpu')
     parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
     parser.add_argument('--devices', type=str, default='0,1,2,3', help='device ids of multile gpus')
-    parser.add_argument('--test_flop', action='store_true', default=False, help='See utils/tools for usage')
+    parser.add_argument('--test_flop', action='store_true', default=False, help='See utils/tools for '
+                                                                                'usage')
 
     # cluster
-    parser.add_argument('--is_cluster', type=int, default=0, help='1: cluster for channels, 0: not cluster')
-    parser.add_argument('--n_clusters', type=int, default=3, help='the number of clusters for the channels')
+    parser.add_argument('--is_cluster', type=int, default=0, help='1: cluster for channels, '
+                                                                  '0: not cluster')
+    parser.add_argument('--n_clusters', type=int, default=3, help='the number of clusters for the '
+                                                                  'channels')
+    parser.add_argument('--corr_threshold', type=float, default=0.6, help='the threshold of mean '
+                                                                          'correlation to decide whether we use CD or '
+                                                                          'CI strategy')
     parser.add_argument('--use_catch22', type=int, default=0, help='whether use catch22 to extract time '
                                                                    'series features for clustering')
+    parser.add_argument('--is_reindex', type=int, default=0, help='whether to reindex the data')
+    parser.add_argument('--adj_k', type=int, default=None, nargs='?', help='the number of nearest k '
+                                                                           'channels to be used')
 
     args = parser.parse_args()
+
+    if args.use_wandb:
+        wandb.login()
+        wandb.init(project='CADMamba',
+                   name=f"{args.data_path.split('.')[0]}_{args.seq_len}_{args.pred_len}_{args.model}",
+                   config=vars(args))
+        wandb.run.log_code('./', include_fn=lambda path: path.endswith(".py") or path.endswith(".ipynb")
+                            or path.endswith(".ipynb")
+                            or path.endswith(".sh")
+        )
 
     # random seed
     fix_seed = args.random_seed
     random.seed(fix_seed)
     torch.manual_seed(fix_seed)
     np.random.seed(fix_seed)
-
 
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
 
@@ -130,6 +173,7 @@ if __name__ == '__main__':
 
     print('Args in experiment:')
     print(args)
+    print_args(args)
 
     Exp = Exp_Main
 
@@ -153,7 +197,7 @@ if __name__ == '__main__':
                 args.factor,
                 args.embed,
                 args.distil,
-                args.des,ii)
+                args.des, ii)
 
             exp = Exp(args)  # set experiments
             print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
@@ -170,26 +214,26 @@ if __name__ == '__main__':
             torch.cuda.empty_cache()
     else:
         ii = 0
-        setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_ds_{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(args.model_id,
-                                                                                                    args.model,
-                                                                                                    args.data,
-                                                                                                    args.features,
-                                                                                                    args.seq_len,
-                                                                                                    args.label_len,
-                                                                                                    args.pred_len,
-                                                                                                    args.d_state,
-                                                                                                    args.d_model,
-                                                                                                    args.n_heads,
-                                                                                                    args.e_layers,
-                                                                                                    args.d_layers,
-                                                                                                    args.d_ff,
-                                                                                                    args.factor,
-                                                                                                    args.embed,
-                                                                                                    args.distil,
-                                                                                                    args.des, ii)
+        setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_ds{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+            args.model_id,
+            args.model,
+            args.data,
+            args.features,
+            args.seq_len,
+            args.label_len,
+            args.pred_len,
+            args.d_state,
+            args.d_model,
+            args.n_heads,
+            args.e_layers,
+            args.d_layers,
+            args.d_ff,
+            args.factor,
+            args.embed,
+            args.distil,
+            args.des, ii)
 
         exp = Exp(args)  # set experiments
         print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
         exp.test(setting, test=1)
         torch.cuda.empty_cache()
-        
