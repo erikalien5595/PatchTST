@@ -41,12 +41,12 @@ python -u run_longExp.py \
   --d_state 16 \
   --d_ff 512 \
   --is_flip 1 \
-  --dropout 0.3\
+  --dropout 0.1 \
   --fc_dropout 0.1 \
   --head_dropout 0 \
   --patch_len 16 \
   --stride 8 \
-  --des '复现论文' \
+  --des 'excel表中非手工指定2类' \
   --use_wandb True \
   --train_epochs 30 \
   --patience 5 \
