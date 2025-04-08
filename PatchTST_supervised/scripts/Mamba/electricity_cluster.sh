@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-gpu=2
+gpu=3
 
 if [ ! -d "./logs" ]; then
     mkdir ./logs
@@ -17,6 +17,10 @@ model_id_name=Electricity # 如果是聚类后的模型，model_id_name后面再
 data_name=custom
 
 random_seed=2024
+for n_clusters in 3 2 1
+do
+for ch_ind in 0 1
+do
 for pred_len in 96 192 336 720
 do
     python -u run_longExp.py \
@@ -29,7 +33,8 @@ do
       --data $data_name \
       --features M \
       --is_cluster 1 \
-      --n_clusters 3 \
+      --n_clusters $n_clusters \
+      --ch_ind $ch_ind \
       --revin 1 \
       --seq_len $seq_len \
       --pred_len $pred_len \
@@ -45,7 +50,8 @@ do
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \
-      --des 'Cluster3Flip' \
+      --des '聚类_类内全CD或CI' \
+      --use_wandb True \
       --train_epochs 10 \
       --patience 5\
       --lradj '5'\
@@ -53,3 +59,7 @@ do
       --gpu ${gpu} \
       --itr 1 --batch_size 128 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
 done
+done
+done
+
+exit

@@ -17,7 +17,10 @@ model_id_name=ETTh1 # 如果是聚类后的模型，model_id_name后面再加上
 data_name=ETTh1
 
 random_seed=2024
-n_clusters=2
+for ch_ind in 0 1
+do
+for n_clusters in 1 2 3 4 5
+do
 for pred_len in 96 192 336 720
 do
 python -u run_longExp.py \
@@ -31,6 +34,7 @@ python -u run_longExp.py \
   --features M \
   --is_cluster 1 \
   --n_clusters $n_clusters \
+  --ch_ind $ch_ind \
   --revin 1 \
   --seq_len $seq_len \
   --pred_len $pred_len \
@@ -46,7 +50,7 @@ python -u run_longExp.py \
   --head_dropout 0 \
   --patch_len 16 \
   --stride 8 \
-  --des '复现论文' \
+  --des '聚类_类内全CD或CI' \
   --use_wandb True \
   --train_epochs 30 \
   --patience 5 \
@@ -55,3 +59,6 @@ python -u run_longExp.py \
   --gpu ${gpu} \
   --itr 1 --batch_size 256 --learning_rate 0.00005 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
 done
+done
+done
+
