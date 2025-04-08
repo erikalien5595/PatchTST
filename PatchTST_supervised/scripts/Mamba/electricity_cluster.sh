@@ -17,6 +17,8 @@ model_id_name=Electricity # 如果是聚类后的模型，model_id_name后面再
 data_name=custom
 
 random_seed=2024
+for corr_threshold in 0.2 0.4 0.6 0.8
+do
 for pred_len in 96 192 336 720
 do
     python -u run_longExp.py \
@@ -30,6 +32,7 @@ do
       --features M \
       --is_cluster 1 \
       --n_clusters 3 \
+      --corr_threshold $corr_threshold \
       --revin 1 \
       --seq_len $seq_len \
       --pred_len $pred_len \
@@ -45,11 +48,13 @@ do
       --head_dropout 0 \
       --patch_len 16 \
       --stride 8 \
-      --des 'Cluster3Flip' \
+      --des 'tau敏感性' \
+      --use_wandb True \
       --train_epochs 10 \
       --patience 5\
       --lradj '5'\
       --pct_start 0.2\
       --gpu ${gpu} \
       --itr 1 --batch_size 128 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
+done
 done

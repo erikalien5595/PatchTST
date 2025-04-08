@@ -17,7 +17,8 @@ model_id_name=ETTh1 # 如果是聚类后的模型，model_id_name后面再加上
 data_name=ETTh1
 
 random_seed=2024
-n_clusters=2
+for corr_threshold in 0.2 0.4 0.6 0.8
+do
 for pred_len in 96 192 336 720
 do
 python -u run_longExp.py \
@@ -30,7 +31,8 @@ python -u run_longExp.py \
   --data $data_name \
   --features M \
   --is_cluster 1 \
-  --n_clusters $n_clusters \
+  --n_clusters 3 \
+  --corr_threshold $corr_threshold \
   --revin 1 \
   --seq_len $seq_len \
   --pred_len $pred_len \
@@ -46,7 +48,7 @@ python -u run_longExp.py \
   --head_dropout 0 \
   --patch_len 16 \
   --stride 8 \
-  --des '复现论文' \
+  --des 'tau敏感性' \
   --use_wandb True \
   --train_epochs 30 \
   --patience 5 \
@@ -55,3 +57,5 @@ python -u run_longExp.py \
   --gpu ${gpu} \
   --itr 1 --batch_size 256 --learning_rate 0.00005 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
 done
+done
+exit

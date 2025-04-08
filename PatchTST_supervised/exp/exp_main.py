@@ -38,7 +38,7 @@ class Exp_Main(Exp_Basic):
         train_data, train_loader = self._get_data(flag='train')
         for i in train_data.label_dict:
             self.args.enc_in_cluster = len(train_data.label_dict[i])
-            self.args.ch_ind = 0 if train_data.sra_dict[i]>0.7 else 1
+            self.args.ch_ind = 0 if train_data.sra_dict[i]>self.args.corr_threshold else 1
             print(f'model {i},  ch_ind={self.args.ch_ind}')
             model = Mamba.Model(self.args).float().to(self.device)
             model_list.append(model)
