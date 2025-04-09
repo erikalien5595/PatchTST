@@ -17,7 +17,7 @@ model_id_name=Weather # 如果是聚类后的模型，model_id_name后面再加�
 data_name=custom
 
 random_seed=2024
-for n_clusters in 3 5 7 9 15 20 21
+for n_clusters in  2 4 6 8 10 # 3 5 7 9 15 20 21
 do
 for pred_len in 96
 do
@@ -43,7 +43,7 @@ python -u run_longExp.py \
   --d_ff 256 \
   --is_flip 1 \
   --dropout 0.1 \
-  --des '聚类个数k敏感性_全CD' \
+  --des '聚类个数k敏感性' \
   --use_wandb True \
   --train_epochs 10 \
   --patience 5\
