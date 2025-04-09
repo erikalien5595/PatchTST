@@ -17,9 +17,9 @@ model_id_name=ETTm1 # 如果是聚类后的模型，model_id_name后面再加上
 data_name=ETTm1
 
 random_seed=2024
-for corr_threshold in 0.2 0.4 0.6 0.8
-do
 for pred_len in 96 192 336 720
+do
+for corr_threshold in 0.1 0.3 0.5 0.7 0.9 #0.2 0.4 0.6 0.8
 do
 python -u run_longExp.py \
   --random_seed $random_seed \
