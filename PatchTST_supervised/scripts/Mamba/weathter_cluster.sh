@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-gpu=0
+gpu=1
 
 if [ ! -d "./logs" ]; then
     mkdir ./logs
@@ -17,9 +17,9 @@ model_id_name=Weather # 如果是聚类后的模型，model_id_name后面再加�
 data_name=custom
 
 random_seed=2024
-for corr_threshold in 0.2 0.4 0.6 0.8
+for pred_len in 192 336 720
 do
-for pred_len in 96
+for corr_threshold in 0.2 0.4 0.6 0.8
 do
 python -u run_longExp.py \
   --random_seed $random_seed \
