@@ -17,8 +17,14 @@ from scipy import stats
 from utils.timefeatures import time_features
 import warnings
 from sklearn.cluster import KMeans
+from sklearn_extra.cluster import KMedoids
 
 warnings.filterwarnings('ignore')
+
+
+def custom_metric(x, y):
+    return 100-np.mean((x - y)**2)
+
 
 
 class Dataset_ETT_hour(Dataset):
@@ -80,7 +86,7 @@ class Dataset_ETT_hour(Dataset):
 
         if self.is_cluster:
             # 对数据进行聚类
-            kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
+            kmeans = KMedoids(n_clusters=self.n_clusters, metric=custom_metric, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
             train_data_std = data[border1s[0]:border2s[0]]
             kmeans.fit(data[border1s[0]:border2s[0]].T)
             # 获取每个样本的聚类标签
@@ -234,7 +240,7 @@ class Dataset_ETT_minute(Dataset):
         if self.is_cluster:
             train_data_std = data[border1s[0]:border2s[0]]
             # 对数据进行聚类
-            kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
+            kmeans = KMedoids(n_clusters=self.n_clusters, metric=custom_metric, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
             kmeans.fit(train_data_std.T)
             # 获取每个样本的聚类标签
             labels = kmeans.labels_
@@ -373,7 +379,7 @@ class Dataset_Custom(Dataset):
             data = df_data.values
 
         if self.is_cluster:
-            kmeans = KMeans(n_clusters=self.n_clusters, random_state=42)  # 假设我们要分成3个簇
+            kmeans = KMedoids(n_clusters=self.n_clusters, metric=custom_metric, random_state=self.cluster_random_state)  # 假设我们要分成3个簇
             if self.data_path == 'weather.csv':
                 print('weather数据处理异常值：修正异常值后重新聚类，但不改变原始数据的标准化')
                 train_data.loc[train_data['OT'] == -9999, 'OT'] = 417 #替换成均值
@@ -800,5 +806,6 @@ if __name__=='__main__':
     #                             features='M', is_cluster=True, size=[96, 48, 24], n_clusters=5, timeenc=0)
     # data_set = Dataset_PEMS(root_path='../dataset/PEMS/', data_path='PEMS03.npz', flag='train',
     #                             features='M', is_cluster=True, size=[96, 48, 24], n_clusters=5, timeenc=0)
-    data_set = Dataset_Solar(root_path='../dataset/', data_path='solar_AL.txt', flag='train',
-                                features='M', is_cluster=True, size=[96, 48, 24], n_clusters=5, timeenc=0)
+
+    data_set = Dataset_ETT_hour(root_path='../dataset/', data_path='solar_AL.txt', flag='train',
+                                features='M', is_cluster=True, n_clusters=5, timeenc=0)

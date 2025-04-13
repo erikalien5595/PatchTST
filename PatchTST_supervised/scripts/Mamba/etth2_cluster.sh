@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-gpu=1
+gpu=0
 
 if [ ! -d "./logs" ]; then
     mkdir ./logs
@@ -46,7 +46,7 @@ python -u run_longExp.py \
   --head_dropout 0 \
   --patch_len 16 \
   --stride 8 \
-  --des '复现论文' \
+  --des '不相似聚到一类' \
   --use_wandb True \
   --train_epochs 30 \
   --patience 5 \

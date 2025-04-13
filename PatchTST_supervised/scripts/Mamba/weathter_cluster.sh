@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-gpu=1
+gpu=2
 
 if [ ! -d "./logs" ]; then
     mkdir ./logs
@@ -17,21 +17,9 @@ model_id_name=Weather # 如果是聚类后的模型，model_id_name后面再加�
 data_name=custom
 
 random_seed=2024
-n_clusters=3
+n_clusters=2
 
-for train_epochs in 20 30 10
-do
-for patience in 10 5
-do
-for batch_size in 512 128
-do
-for lradj in 'type3' '5'
-do
-for e_layers in 2 3
-do
-for dropout in 0.1 0.2 0.3
-do
-for pred_len in 192 #96 192 336 720
+for pred_len in 96 192 336 720
 do
 python -u run_longExp.py \
   --random_seed $random_seed \
@@ -49,25 +37,24 @@ python -u run_longExp.py \
   --seq_len $seq_len \
   --pred_len $pred_len \
   --enc_in 21 \
-  --e_layers $e_layers \
+  --e_layers 2 \
   --n_heads 16 \
   --d_model 512 \
   --d_state 16 \
   --d_ff 256 \
   --is_flip 1 \
-  --dropout $dropout \
+  --dropout 0.1 \
   --fc_dropout 0.2 \
   --head_dropout 0 \
   --patch_len 16 \
   --stride 8 \
-  --des '尝试复现论文' \
-  --use_wandb True \
-  --train_epochs $train_epochs \
-  --patience $patience\
-  --lradj $lradj \
+  --des '不相似聚到一类' \
+  --train_epochs 10 \
+  --patience 10\
+  --lradj '5' \
   --pct_start 0.2\
   --gpu ${gpu} \
-  --itr 1 --batch_size $batch_size --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
+  --itr 1 --batch_size 256 --learning_rate 0.0001 #>logs/LongForecasting/$model_name'_'$model_id_name'_'$seq_len'_'$pred_len.log
 done
 done
 done
@@ -75,3 +62,6 @@ done
 done
 done
 done
+
+exit
+  --use_wandb True \

@@ -13,6 +13,66 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 pd.set_option('display.max_columns',None)
 
+data_set = Dataset_ETT_hour(root_path='./dataset/ETT-small/', data_path='ETTh1.csv', flag='train',
+                            features='M', is_cluster=True, size=[96, 48, 96], n_clusters=5, timeenc=0)
+print(data_set.__len__(), len(data_set.data_x), data_set.pred_len, data_set.seq_len)
+
+corr_list = []
+for i in range(data_set.__len__()):
+    tmp = np.corrcoef(data_set.__getitem__(i)[0].T)
+    corr_list.append(tmp[1, 3])
+
+import matplotlib.pyplot as plt
+plt.figure(figsize=(8, 12))
+plt.subplot(2, 1, 1)
+plt.plot(corr_list)
+plt.xticks(fontsize=14)
+plt.yticks(fontsize=14)
+plt.xlabel('window', fontsize=14)
+plt.ylabel('correlation coeffecients', fontsize=14)
+plt.title('Local correlation of variable 1 and 3 in each window', fontsize=16)
+plt.subplot(2, 1, 2)
+plt.hist(corr_list)
+plt.xticks(fontsize=14)
+plt.yticks(fontsize=14)
+plt.title('Distribution of local correlation of variable 1 and 3', fontsize=16)
+plt.xlabel('correlation coeffecients', fontsize=14)
+plt.ylabel('frequency', fontsize=14)
+plt.show()
+
+# 定义区间边界
+bins = [i/10 for i in range(11)]  # [0, 0.1, 0.2, ..., 1.0]
+
+# 利用 numpy.histogram 进行统计
+counts, bin_edges = np.histogram(corr_list, bins=bins)
+
+# 总计数
+total_count = sum(counts)
+
+# 打印表头
+print("| Range          | Count | Frequency  |")
+print("|----------------|-------|-----------|")
+
+# 依次输出每个区间结果
+for i in range(len(counts)):
+    # 当前区间
+    left_edge = bin_edges[i]
+    right_edge = bin_edges[i+1]
+    # 计数
+    c = counts[i]
+    # 频率 = 计数 / 总计数
+    freq = c / total_count
+    # 注意最后一个区间是闭区间 [0.9, 1.0]，可根据需要调整打印格式
+    if i == len(counts) - 1:  # 最后一个区间
+        print(f"| [{left_edge}, {right_edge}]  | {c}     | {freq:.4f}   |")
+    else:
+        print(f"| [{left_edge}, {right_edge}) | {c}     | {freq:.4f}   |")
+
+# 最后一行打印总计
+print(f"| Total          | {total_count}    | 1.0000    |")
+
+
+exit()
 if __name__=='__main__':
     scaler = StandardScaler()
     flag = 'train'

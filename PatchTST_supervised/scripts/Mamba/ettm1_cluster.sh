@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-gpu=2
+gpu=1
 
 if [ ! -d "./logs" ]; then
     mkdir ./logs
@@ -17,7 +17,7 @@ model_id_name=ETTm1 # 如果是聚类后的模型，model_id_name后面再加上
 data_name=ETTm1
 
 random_seed=2024
-n_clusters=5
+n_clusters=2
 for pred_len in 96 192 336 720
 do
 python -u run_longExp.py \
@@ -46,7 +46,7 @@ python -u run_longExp.py \
   --head_dropout 0 \
   --patch_len 16 \
   --stride 8 \
-  --des '复现论文' \
+  --des '不相似聚到一类' \
   --use_wandb True \
   --train_epochs 30 \
   --patience 5 \
