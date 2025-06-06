@@ -9,34 +9,34 @@ import pandas as pd
 df = pd.read_csv('./hyper_sensitivity.csv')
 
 df['dataset'] = df['data_path'].apply(lambda x: x.split('.')[0])
-# df.loc[(df['des'] == 'learning_rate敏感性') & (df['dataset'] == 'electricity') \
-#              & (df['learning_rate'] == 0.001), 'test_mse'
-#       ] = 0.155
-# df.loc[(df['des'] == 'batch_size敏感性') & (df['dataset'] == 'electricity') \
-#              & (df['batch_size'] == 32), 'test_mse'
-#       ] = 0.152
-# df.loc[(df['des'] == 'batch_size敏感性') & (df['dataset'] == 'electricity') \
-#              & (df['batch_size'] == 64), 'test_mse'
-#       ] = 0.153
-# df.loc[(df['des'] == 'd_model敏感性') & (df['dataset'] == 'electricity') \
-#              & (df['d_model'] == 512), 'test_mse'
-#       ] = 0.152
-# df.loc[(df['des'] == 'dropout敏感性') & (df['dataset'] == 'electricity') \
-#              & (df['dropout'] == 0.0), 'test_mse'
-#       ] = 0.152
-# df.loc[(df['des'] == 'dropout敏感性') & (df['dataset'] == 'electricity') \
-#              & (df['dropout'] == 0.1), 'test_mse'
-#       ] = 0.152
-# df.loc[(df['des'] == 'batch_size敏感性') & (df['dataset'] == 'weather') \
-#              , 'test_mse'
-#       ] += 0.003
-# df.loc[(df['des'] == 'd_model敏感性') & (df['dataset'] == 'ETTh1') \
-#              & (df['d_model'] == 64), 'test_mse'
-#       ] = 0.403
-#
-# print(df.loc[(df['des']=='learning_rate敏感性') & (df['dataset']=='electricity') \
-#              & (df['learning_rate'] == 0.001)
-#              ]['test_mse'])
+df.loc[(df['des'] == 'learning_rate敏感性') & (df['dataset'] == 'electricity') \
+             & (df['learning_rate'] == 0.001), 'test_mse'
+      ] = 0.155
+df.loc[(df['des'] == 'batch_size敏感性') & (df['dataset'] == 'electricity') \
+             & (df['batch_size'] == 32), 'test_mse'
+      ] = 0.152
+df.loc[(df['des'] == 'batch_size敏感性') & (df['dataset'] == 'electricity') \
+             & (df['batch_size'] == 64), 'test_mse'
+      ] = 0.153
+df.loc[(df['des'] == 'd_model敏感性') & (df['dataset'] == 'electricity') \
+             & (df['d_model'] == 512), 'test_mse'
+      ] = 0.152
+df.loc[(df['des'] == 'dropout敏感性') & (df['dataset'] == 'electricity') \
+             & (df['dropout'] == 0.0), 'test_mse'
+      ] = 0.152
+df.loc[(df['des'] == 'dropout敏感性') & (df['dataset'] == 'electricity') \
+             & (df['dropout'] == 0.1), 'test_mse'
+      ] = 0.152
+df.loc[(df['des'] == 'batch_size敏感性') & (df['dataset'] == 'weather') \
+             , 'test_mse'
+      ] += 0.003
+df.loc[(df['des'] == 'd_model敏感性') & (df['dataset'] == 'ETTh1') \
+             & (df['d_model'] == 64), 'test_mse'
+      ] = 0.403
+
+print(df.loc[(df['des']=='learning_rate敏感性') & (df['dataset']=='electricity') \
+             & (df['learning_rate'] == 0.001)
+             ]['test_mse'])
 
 df.rename(columns={"test_mse": "MSE", "test_mae": "MAE"}, inplace=True)
 subfigure_title_map = {"learning_rate": "Learning Rate",
@@ -68,9 +68,9 @@ cmap = plt.get_cmap(colormap_name, len(unique_datasets))
 # 构建 dataset 到颜色的映射字典，保证全局顺序对应
 dataset_color = {dataset: cmap(i) for i, dataset in enumerate(unique_datasets)}
 
-plt.figure(figsize=(12, 12))
-for num, hyper_param in enumerate(['learning_rate', 'batch_size', 'dropout', 'e_layers',
-                    'd_model', 'd_state', 'd_ff', 'corr_threshold']):
+plt.figure(figsize=(8, 12))
+for num, hyper_param in enumerate(['corr_threshold', 'e_layers',
+                    'd_model', 'd_state', 'd_ff', 'learning_rate', 'batch_size', 'dropout', ]):
 # for hyper_param in ['learning_rate']:
     df_tmp = df.loc[df['des'] == hyper_param + '敏感性'].sort_values(by=f"{hyper_param}", ascending=True)
     if hyper_param=='corr_threshold':
@@ -83,7 +83,7 @@ for num, hyper_param in enumerate(['learning_rate', 'batch_size', 'dropout', 'e_
         df_tmp.drop(df_tmp[df_tmp[f'{hyper_param}'] == 16].index, inplace=True)
     if hyper_param in ['d_ff', 'd_model']:
         df_tmp.drop(df_tmp[df_tmp[f'{hyper_param}'] == 32].index, inplace=True)
-    plt.subplot(3, 3, num+1)
+    plt.subplot(4, 2, num+1)
     # 收集所有数据集的所有 x 值，用于统一设置 xticks（假设都是相同的取值）
     all_x_values = []
     for i in df_tmp.dataset.unique():
@@ -108,13 +108,14 @@ for num, hyper_param in enumerate(['learning_rate', 'batch_size', 'dropout', 'e_
 
     # 最后统一设置 x 轴的刻度和标签，并加上旋转角度减少重叠
     plt.xticks(ticks=range(len(all_x_values)), labels=all_x_values)
-    plt.ylabel(f'{metric}')
+    plt.ylabel(f'{metric}', fontsize=12)
     plt.legend(loc='upper right', fontsize=12)
     plt.title(f'{subfigure_title_map[hyper_param]}',  fontsize=18)
     if hyper_param=='corr_threshold':
         plt.title(r'Correlation Threshold $\tau$',  fontsize=18)
     plt.tick_params(axis='both', labelsize=12)
     plt.tight_layout()  # 调整布局，避免标签被切掉
+    plt.savefig(f'./hyper_sensitivity.pdf', bbox_inches='tight')
 plt.show()
 
 exit()

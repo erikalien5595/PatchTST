@@ -23,23 +23,25 @@ for i in range(data_set.__len__()):
     corr_list.append(tmp[1, 3])
 
 import matplotlib.pyplot as plt
-plt.figure(figsize=(8, 12))
-plt.subplot(2, 1, 1)
-plt.plot(corr_list)
-plt.xticks(fontsize=14)
-plt.yticks(fontsize=14)
-plt.xlabel('window', fontsize=14)
-plt.ylabel('correlation coeffecients', fontsize=14)
-plt.title('Local correlation of variable 1 and 3 in each window', fontsize=16)
-plt.subplot(2, 1, 2)
+plt.figure(figsize=(8, 6))
+# plt.subplot(2, 1, 1)
+# plt.plot(corr_list)
+# plt.xticks(fontsize=14)
+# plt.yticks(fontsize=14)
+# plt.xlabel('window', fontsize=14)
+# plt.ylabel('correlation coeffecients', fontsize=14)
+# plt.title('Local correlation of variable 1 and 3 in each window', fontsize=16)
+# plt.subplot(2, 1, 2)
 plt.hist(corr_list)
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
 plt.title('Distribution of local correlation of variable 1 and 3', fontsize=16)
-plt.xlabel('correlation coeffecients', fontsize=14)
-plt.ylabel('frequency', fontsize=14)
+plt.xlabel('Correlation Coeffecients', fontsize=14)
+plt.ylabel('Frequency', fontsize=14)
+plt.savefig('./corr_distribution_ETTh1.pdf', bbox_inches='tight')
 plt.show()
 
+exit()
 # 定义区间边界
 bins = [i/10 for i in range(11)]  # [0, 0.1, 0.2, ..., 1.0]
 
